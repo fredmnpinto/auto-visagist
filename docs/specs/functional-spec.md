@@ -1,10 +1,12 @@
 # Functional Specification: Facial Visagism Analysis System
 
-> **Version**: 1.2.0 | **Date**: 2026-05-07 | **Author**: Documenter Agent | **Status**: Draft
+> **Version**: 1.4.0 | **Date**: 2026-05-07 | **Author**: Documenter Agent | **Status**: Draft
 
 ## Change Log
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.4.0 | 2026-05-07 | Documenter Agent | Added FR-013 (Hairline Detection via Edge Detection) to support superior third calculation in FR-005. HairlineDetector uses Canny edge detection and horizontal line scanning above the eyebrows to estimate the hairline position. |
+| 1.3.0 | 2026-05-07 | Documenter Agent | Implemented core detection pipeline: FR-001 (Face Photo Input), FR-002 (Face Detection), FR-003 (Facial Landmark Detection), FR-004 (Landmark Visualization), FR-012 (Error Handling). All Must-priority requirements for input/detection/visualization complete. |
 | 1.0.0 | 2026-05-07 | Documenter Agent | Initial draft for Computer Vision assignment |
 | 1.1.0 | 2026-05-07 | Documenter Agent | Priority updates: FR-004 (Should→Must), FR-008 (Must→Could), FR-009 (Should→Could); Added FR-014 (Makeup Style Recommendation, Should priority); Updated scope to include makeup recommendations, reclassify hair/beard as secondary features; Updated FaceAnalysis data model to include makeup recommendations |
 | 1.2.0 | 2026-05-07 | Documenter Agent | Scope reduction: removed FR-008 (Hairstyle), FR-009 (Hair Color), FR-010 (Beard), FR-013 (Batch), FR-014 (Makeup); narrowed to core computer vision pipeline (detection → landmarks → proportions → shape → golden ratio → report); removed Recommendation Engine component; cleaned up data models; updated non-goals |
@@ -85,15 +87,16 @@ A working prototype that:
 
 | ID | Title | Description | Priority (Must/Should/Could) | Source | Dependencies | Status |
 |----|-------|-------------|-------------------------------|--------|--------------|--------|
-| FR-001 | Face Photo Input | The system shall accept frontal face photographs in common formats (JPG, PNG) from file upload or directory path | Must | Assignment Spec §2.1 | None | Draft |
-| FR-002 | Face Detection | The system shall detect the presence of a human face in the input image using OpenCV cascade classifier or dlib | Must | Assignment Spec §2.2 | FR-001 | Draft |
-| FR-003 | Facial Landmark Detection | The system shall identify and map 68 facial landmarks including jawline (17 points), eyebrows (10 points), nose (9 points), eyes (12 points), and mouth (20 points) | Must | Visagism Methodology | FR-002 | Draft |
-| FR-004 | Landmark Visualization | The system shall display the original image with overlaid landmark points and connecting lines for visual verification | Must | Assignment Spec §2.3 | FR-003 | Draft |
+| FR-001 | Face Photo Input | The system shall accept frontal face photographs in common formats (JPG, PNG) from file upload or directory path | Must | Assignment Spec §2.1 | None | Implemented |
+| FR-002 | Face Detection | The system shall detect the presence of a human face in the input image using OpenCV cascade classifier or dlib | Must | Assignment Spec §2.2 | FR-001 | Implemented |
+| FR-003 | Facial Landmark Detection | The system shall identify and map 68 facial landmarks including jawline (17 points), eyebrows (10 points), nose (9 points), eyes (12 points), and mouth (20 points) | Must | Visagism Methodology | FR-002 | Implemented |
+| FR-004 | Landmark Visualization | The system shall display the original image with overlaid landmark points and connecting lines for visual verification | Must | Assignment Spec §2.3 | FR-003 | Implemented |
 | FR-005 | Facial Proportion Calculation | The system shall calculate facial proportions including: face width-to-height ratio, three facial thirds (superior, medium, inferior), eye spacing ratio, jawline angle | Must | Visagism Methodology | FR-003 | Draft |
 | FR-006 | Face Shape Classification | The system shall classify the face shape into one of 7 categories (Oval, Round, Square, Oblong, Heart, Triangle, Diamond) based on calculated proportions and landmark positions | Must | Visagism Methodology | FR-005 | Draft |
 | FR-007 | Golden Ratio Analysis | The system shall compare calculated facial proportions against the golden ratio (1.618) and identify proportions that deviate by more than 10% | Should | Visagism Methodology | FR-005 | Draft |
 | FR-011 | Analysis Report Generation | The system shall generate a text-based or visual report containing: detected face shape, calculated proportions with golden ratio comparison | Must | Assignment Spec §2.4 | FR-006, FR-007 | Draft |
-| FR-012 | Error Handling | The system shall gracefully handle errors including: no face detected, multiple faces detected (use largest), poor image quality, non-frontal poses with user warning | Must | Assignment Spec §2.5 | FR-002 | Draft |
+| FR-012 | Error Handling | The system shall gracefully handle errors including: no face detected, multiple faces detected (use largest), poor image quality, non-frontal poses with user warning | Must | Assignment Spec §2.5 | FR-002 | Implemented |
+| FR-013 | Hairline Detection via Edge Detection | The system shall estimate the hairline position using edge detection on the forehead region to support facial third measurements | Must | Visagism Methodology | FR-003 | Draft |
 
 ### Detailed Acceptance Criteria
 
@@ -103,13 +106,13 @@ A working prototype that:
 **Source**: Assignment Spec §2.1
 **Dependencies**: None
 **Acceptance Criteria**:
-- [ ] Accept JPG/JPEG images with .jpg, .jpeg extensions
-- [ ] Accept PNG images with .png extension
-- [ ] Accept image via command-line argument with valid file path
-- [ ] Return clear error message for unsupported formats (e.g., "Unsupported format: .gif. Use JPG or PNG")
-- [ ] Return clear error message for non-existent file path (e.g., "File not found: /path/to/image.jpg")
-- [ ] Handle images with minimum resolution of 200x200 pixels
-**Status**: Draft
+- [x] Accept JPG/JPEG images with .jpg, .jpeg extensions
+- [x] Accept PNG images with .png extension
+- [x] Accept image via command-line argument with valid file path
+- [x] Return clear error message for unsupported formats (e.g., "Unsupported format: .gif. Use JPG or PNG")
+- [x] Return clear error message for non-existent file path (e.g., "File not found: /path/to/image.jpg")
+- [x] Handle images with minimum resolution of 200x200 pixels
+**Status**: Implemented
 
 #### FR-002: Face Detection
 **Description**: The system shall detect the presence of a human face in the input image using OpenCV cascade classifier or dlib.
@@ -117,12 +120,12 @@ A working prototype that:
 **Source**: Assignment Spec §2.2
 **Dependencies**: FR-001
 **Acceptance Criteria**:
-- [ ] Detect at least one face in images containing clear frontal faces
-- [ ] Return bounding box coordinates (x, y, width, height) for detected face
-- [ ] Handle multiple faces by selecting the largest face in the image
-- [ ] Return "No face detected" message with suggestion for better photo when no face found
-- [ ] Process detection within 2 seconds for images up to 1920x1080 resolution
-**Status**: Draft
+- [x] Detect at least one face in images containing clear frontal faces
+- [x] Return bounding box coordinates (x, y, width, height) for detected face
+- [x] Handle multiple faces by selecting the largest face in the image
+- [x] Return "No face detected" message with suggestion for better photo when no face found
+- [x] Process detection within 2 seconds for images up to 1920x1080 resolution
+**Status**: Implemented
 
 #### FR-003: Facial Landmark Detection
 **Description**: The system shall identify and map 68 facial landmarks including jawline (17 points), eyebrows (10 points), nose (9 points), eyes (12 points), and mouth (20 points).
@@ -130,15 +133,15 @@ A working prototype that:
 **Source**: Visagism Methodology
 **Dependencies**: FR-002
 **Acceptance Criteria**:
-- [ ] Detect all 68 landmark points as (x, y) coordinates
-- [ ] Correctly identify jawline points (points 1-17)
-- [ ] Correctly identify left eyebrow points (points 18-22) and right eyebrow points (points 23-27)
-- [ ] Correctly identify nose bridge (points 28-30) and nose tip with nostrils (points 31-36)
-- [ ] Correctly identify left eye (points 37-42) and right eye (points 43-48)
-- [ ] Correctly identify outer mouth (points 49-60) and inner mouth (points 61-68)
-- [ ] Achieve landmark detection accuracy ≥90% compared to manual annotation on test set
-- [ ] Process landmark detection within 3 seconds per image
-**Status**: Draft
+- [x] Detect all 68 landmark points as (x, y) coordinates
+- [x] Correctly identify jawline points (points 1-17)
+- [x] Correctly identify left eyebrow points (points 18-22) and right eyebrow points (points 23-27)
+- [x] Correctly identify nose bridge (points 28-30) and nose tip with nostrils (points 31-36)
+- [x] Correctly identify left eye (points 37-42) and right eye (points 43-48)
+- [x] Correctly identify outer mouth (points 49-60) and inner mouth (points 61-68)
+- [x] Achieve landmark detection accuracy ≥90% compared to manual annotation on test set
+- [x] Process landmark detection within 3 seconds per image
+**Status**: Implemented
 
 #### FR-004: Landmark Visualization
 **Description**: The system shall display the original image with overlaid landmark points and connecting lines for visual verification.
@@ -146,13 +149,13 @@ A working prototype that:
 **Source**: Assignment Spec §2.3
 **Dependencies**: FR-003
 **Acceptance Criteria**:
-- [ ] Display original image in a window or save to file
-- [ ] Plot all 68 landmark points as colored circles on the image
-- [ ] Draw connecting lines between landmarks to show facial structure (jawline, eyebrows, eyes, nose, mouth)
-- [ ] Use distinct colors for different facial regions (e.g., green for jawline, blue for eyes, red for mouth)
-- [ ] Save visualization to output file (e.g., output_landmarks.jpg) when not displaying window
-- [ ] Include legend or labels for facial regions
-**Status**: Draft
+- [x] Display original image in a window or save to file
+- [x] Plot all 68 landmark points as colored circles on the image
+- [x] Draw connecting lines between landmarks to show facial structure (jawline, eyebrows, eyes, nose, mouth)
+- [x] Use distinct colors for different facial regions (e.g., green for jawline, blue for eyes, red for mouth)
+- [x] Save visualization to output file (e.g., output_landmarks.jpg) when not displaying window
+- [x] Include legend or labels for facial regions
+**Status**: Implemented
 
 #### FR-005: Facial Proportion Calculation
 **Description**: The system shall calculate facial proportions including: face width-to-height ratio, three facial thirds, eye spacing ratio, jawline angle.
@@ -161,7 +164,7 @@ A working prototype that:
 **Dependencies**: FR-003
 **Acceptance Criteria**:
 - [ ] Calculate face width (distance between leftmost and rightmost jawline points)
-- [ ] Calculate face height (distance from hairline estimate to chin point)
+- [ ] Calculate face height (distance from FR-013 hairline estimate to chin point)
 - [ ] Calculate width-to-height ratio with precision to 2 decimal places
 - [ ] Calculate superior third (hairline to eyebrows) height
 - [ ] Calculate medium third (eyebrows to nose base) height
@@ -170,6 +173,7 @@ A working prototype that:
 - [ ] Calculate jawline angle (angle formed by jawline points)
 - [ ] All measurements output in pixels with conversion to centimeters using known reference (e.g., eye distance ~6.3cm)
 **Status**: Draft
+**Note**: Hairline position is estimated via FR-013 (Hairline Detector) using Canny edge detection on the forehead region above the eyebrows.
 
 #### FR-006: Face Shape Classification
 **Description**: The system shall classify the face shape into one of 7 categories based on calculated proportions and landmark positions.
@@ -222,12 +226,27 @@ A working prototype that:
 **Source**: Assignment Spec §2.5
 **Dependencies**: FR-002
 **Acceptance Criteria**:
-- [ ] Display "No face detected. Please provide a clear frontal photo." when no face found
-- [ ] When multiple faces detected, use largest face and display "Multiple faces detected. Analyzing largest face."
-- [ ] Detect non-frontal pose (head rotation >30°) and warn "Image appears non-frontal. For best results, use a frontal photo."
-- [ ] Detect low resolution (<200x200) and warn "Image resolution low. Recommended minimum: 200x200 pixels."
-- [ ] Handle corrupted image files with "Error: Cannot read image file. File may be corrupted."
-- [ ] All errors should not crash the program; return meaningful messages and exit gracefully
+- [x] Display "No face detected. Please provide a clear frontal photo." when no face found
+- [x] When multiple faces detected, use largest face and display "Multiple faces detected. Analyzing largest face."
+- [x] Detect non-frontal pose (head rotation >30°) and warn "Image appears non-frontal. For best results, use a frontal photo."
+- [x] Detect low resolution (<200x200) and warn "Image resolution low. Recommended minimum: 200x200 pixels."
+- [x] Handle corrupted image files with "Error: Cannot read image file. File may be corrupted."
+- [x] All errors should not crash the program; return meaningful messages and exit gracefully
+**Status**: Implemented
+
+#### FR-013: Hairline Detection via Edge Detection
+**Description**: The system shall estimate the hairline position using edge detection on the forehead region to support facial third measurements.
+**Priority**: Must
+**Source**: Visagism Methodology
+**Dependencies**: FR-003
+**Acceptance Criteria**:
+- [ ] Define a search region above the eyebrows, bounded by the face width, to locate the hairline
+- [ ] Apply preprocessing (Gaussian blur) to reduce noise in the forehead region
+- [ ] Use Canny edge detection to identify edges in the search region
+- [ ] Scan for strong continuous horizontal edges as candidate hairline positions
+- [ ] Return the estimated hairline y-coordinate, falling back to bounding box top if no strong edge found
+- [ ] Visualize detected hairline as a dashed line in the landmark visualization output (if --hairline flag is active)
+- [ ] Provide the estimated hairline coordinate as input to FR-005 superior third calculation
 **Status**: Draft
 
 ---
@@ -256,6 +275,7 @@ A working prototype that:
 | Image Input Module | Handle image loading and validation | Read image files, validate format/resolution, handle errors |
 | Face Detection Module | Detect faces in images | Use OpenCV cascade or dlib to locate faces, return bounding boxes |
 | Landmark Detection Module | Identify 68 facial landmarks | Use dlib shape predictor or similar to map facial points |
+| Hairline Detection Module | Estimate hairline position using edge detection | Use Canny edge detection on forehead region above eyebrows, scan for horizontal edges, return y-coordinate estimate |
 | Proportion Calculator | Calculate facial measurements | Compute ratios, angles, thirds from landmark coordinates |
 | Face Shape Classifier | Classify face into 7 shape categories | Apply visagism rules to determine face shape |
 | Visagism Analyzer | Compare proportions to golden ratio | Identify deviations and generate analysis |
@@ -271,6 +291,7 @@ A working prototype that:
 | face_rect | Tuple (x, y, w, h) | Yes | Bounding box of detected face |
 | landmarks_68 | List of (x, y) tuples | Yes | 68 landmark coordinates |
 | landmarks_by_region | Dict | Yes | Landmarks grouped by region (jaw, brows, nose, eyes, mouth) |
+| hairline_y | Integer or None | No | Estimated hairline y-coordinate from FR-013 edge detection, or None if not computed |
 
 #### Model: FacialProportions
 | Field | Type | Required | Description |
@@ -309,11 +330,11 @@ A working prototype that:
 
 ### 6.1 User Interface
 - **Primary Interface**: Command-line interface (CLI)
-- **Usage**: `python visagism_analyzer.py --input <image_path> [--output <output_dir>] [--visualize]`
+- **Usage**: `python visagism.py --input <image_path> [--output <output_dir>] [--visualize] [--save-viz] [--hairline]`
 - **Example**:
   ```bash
   # Process single image
-  python visagism_analyzer.py --input photos/face.jpg --visualize
+  python visagism.py --input photos/face.jpg --visualize --hairline
   ```
 
 ### 6.2 Input Format
@@ -323,6 +344,7 @@ A working prototype that:
 | --output | String (path) | No | Output directory for results (default: ./output) |
 | --visualize | Flag | No | Display landmark visualization window |
 | --save-viz | Flag | No | Save visualization to file without displaying |
+| --hairline | Flag | No | Enable hairline detection visualization (dashed line) |
 
 ### 6.3 Output Format
 - **Console Output**: Analysis summary with face shape and golden ratio comparisons
