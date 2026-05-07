@@ -1,1 +1,21 @@
 .direnv/
+
+# Output directory
+/output/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Model file (large binary, ~100MB)
+data/shape_predictor_68_face_landmarks.dat
+
+# Editor
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
