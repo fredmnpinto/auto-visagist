@@ -7,24 +7,21 @@ MSc Computer Vision assignment @ Universidade de Aveiro, 2025/2026.
 
 ## Development Environment
 
-- **Nix flake**: `../flake.nix` — enter with `nix develop` or auto-load via direnv (`.envrc` uses `use flake`)
-- **Pre-installed in devshell**: Python 3.12, numpy, matplotlib, opencv (with GTK2 for `cv2.imshow`)
-- **Adding dependencies**: All dependencies go in `../flake.nix`. Never `pip install` manually.
-  Currently missing from flake (add as needed): dlib, pytest, pytest-cov, flake8, mypy
+- **Nix flake**: `./flake.nix` — enter with `nix develop` or auto-load via direnv (`.envrc` uses `use flake`)
+- **Pre-installed in devshell**: Python 3.12, numpy, matplotlib, opencv (with GTK2 for `cv2.imshow`), dlib, pytest, pytest-cov, flake8, mypy
+- **Adding dependencies**: All dependencies go in `flake.nix`. Never `pip install` manually.
 - **Download dlib model** (not in repo, ~100MB, gitignored):
   ```
   wget http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2
   bzip2 -d shape_predictor_68_face_landmarks.dat.bz2
   # Place at: data/shape_predictor_68_face_landmarks.dat
   ```
-- **Dependencies** tracked in `requirements.txt` (create one documenting all deps including those from flake)
 
 ## Commands
 
 | Action | Command |
 |--------|---------|
 | Enter devshell | `nix develop` |
-| Install deps | `pip install -r requirements.txt` |
 | Run all tests | `python -m pytest tests/ -v` |
 | Run single test | `python -m pytest tests/test_X.py::TestY::test_z -v` |
 | Run by keyword | `python -m pytest tests/ -k "keyword" -v` |
