@@ -1,0 +1,425 @@
+# Functional Specification: Facial Visagism Analysis System
+
+> **Version**: 1.2.0 | **Date**: 2026-05-07 | **Author**: Documenter Agent | **Status**: Draft
+
+## Change Log
+| Version | Date | Author | Changes |
+|---------|------|--------|---------|
+| 1.0.0 | 2026-05-07 | Documenter Agent | Initial draft for Computer Vision assignment |
+| 1.1.0 | 2026-05-07 | Documenter Agent | Priority updates: FR-004 (Should→Must), FR-008 (Must→Could), FR-009 (Should→Could); Added FR-014 (Makeup Style Recommendation, Should priority); Updated scope to include makeup recommendations, reclassify hair/beard as secondary features; Updated FaceAnalysis data model to include makeup recommendations |
+| 1.2.0 | 2026-05-07 | Documenter Agent | Scope reduction: removed FR-008 (Hairstyle), FR-009 (Hair Color), FR-010 (Beard), FR-013 (Batch), FR-014 (Makeup); narrowed to core computer vision pipeline (detection → landmarks → proportions → shape → golden ratio → report); removed Recommendation Engine component; cleaned up data models; updated non-goals |
+
+---
+
+## 1. Introduction
+
+### 1.1 Purpose
+This document defines the functional and non-functional requirements for a Computer Vision application that performs facial visagism analysis. The system processes frontal face photographs to identify facial landmarks, calculate proportions, classify face shape, and compare measurements against the golden ratio based on facial geometry.
+
+This specification serves as the single source of truth for the project development team and will be maintained throughout the Computer Vision assignment at Universidade de Aveiro (2025/2026, 2nd Semester).
+
+### 1.2 Scope
+
+**In Scope**:
+- Frontal face photo input (upload or capture)
+- Facial landmark detection (68-point model)
+- Facial proportion calculations (thirds, ratios, angles)
+- Face shape classification (7 types: Oval, Round, Square, Oblong, Heart, Triangle, Diamond)
+- Golden ratio analysis comparing facial proportions to 1.618
+- Visualization of facial landmarks and measurements
+- Report generation with analysis results
+
+**Out of Scope (Non-Goals)**:
+- Real-time video processing (focus is single image analysis for assignment Level 1-2)
+- 3D facial reconstruction or depth analysis
+- Integration with external APIs or cloud services (must run locally using OpenCV)
+- Mobile or web application deployment (desktop application or script is sufficient)
+- Database storage of user photos or results (stateless processing)
+- Multi-face detection in single image (single subject focus)
+- Age estimation or gender detection (user will specify)
+- Hairstyle, hair color, beard, and makeup recommendations (pure business logic, not computer vision)
+- Batch processing of multiple images
+
+### 1.3 Audience
+- Development team (2 students)
+- Course professor and evaluators
+- Stakeholders interested in visagism analysis
+
+### 1.4 References
+- Computer Vision Assignment Specification (Universidade de Aveiro, 2025/2026)
+- Visagism reference: https://pandami.com.br/blog/visagismo-cabelo-guia-completo
+- OpenCV documentation for facial landmark detection
+- dlib 68-point facial landmark predictor model
+
+---
+
+## 2. System Description
+
+### 2.1 Current State (As-Is)
+The project is at the initial stage with no existing codebase. The assignment requirements and visagism methodology have been defined. The team will use OpenCV and Python for implementation.
+
+### 2.2 Target State (To-Be)
+A working prototype that:
+1. Accepts a frontal face photograph as input
+2. Detects 68 facial landmarks using computer vision techniques
+3. Calculates facial proportions including thirds (superior, medium, inferior), width-to-length ratio, and jawline angles
+4. Classifies the face shape into one of 7 categories
+5. Performs visagism analysis comparing proportions to golden ratio (1.618)
+6. Highlights proportions that deviate from the golden ratio to identify areas of asymmetry or non-ideal balance
+7. Displays visual overlays of landmarks and measurements on the original image
+8. Produces a summary report of the analysis
+
+### 2.3 Project Goals
+- Achieve accurate facial landmark detection with ≥90% accuracy on test images
+- Correctly classify face shapes with ≥85% accuracy against manual classification
+- Complete implementation by final presentation date (May 28, 2026)
+- Demonstrate understanding of computer vision techniques (OpenCV, facial detection algorithms)
+- Create a working demo for single uploaded image analysis
+- Document code and methodology following academic standards
+
+---
+
+## 3. Functional Requirements
+
+> Each requirement has a unique ID (FR-XXX), clear description, priority, testable acceptance criteria, and traceability.
+
+| ID | Title | Description | Priority (Must/Should/Could) | Source | Dependencies | Status |
+|----|-------|-------------|-------------------------------|--------|--------------|--------|
+| FR-001 | Face Photo Input | The system shall accept frontal face photographs in common formats (JPG, PNG) from file upload or directory path | Must | Assignment Spec §2.1 | None | Draft |
+| FR-002 | Face Detection | The system shall detect the presence of a human face in the input image using OpenCV cascade classifier or dlib | Must | Assignment Spec §2.2 | FR-001 | Draft |
+| FR-003 | Facial Landmark Detection | The system shall identify and map 68 facial landmarks including jawline (17 points), eyebrows (10 points), nose (9 points), eyes (12 points), and mouth (20 points) | Must | Visagism Methodology | FR-002 | Draft |
+| FR-004 | Landmark Visualization | The system shall display the original image with overlaid landmark points and connecting lines for visual verification | Must | Assignment Spec §2.3 | FR-003 | Draft |
+| FR-005 | Facial Proportion Calculation | The system shall calculate facial proportions including: face width-to-height ratio, three facial thirds (superior, medium, inferior), eye spacing ratio, jawline angle | Must | Visagism Methodology | FR-003 | Draft |
+| FR-006 | Face Shape Classification | The system shall classify the face shape into one of 7 categories (Oval, Round, Square, Oblong, Heart, Triangle, Diamond) based on calculated proportions and landmark positions | Must | Visagism Methodology | FR-005 | Draft |
+| FR-007 | Golden Ratio Analysis | The system shall compare calculated facial proportions against the golden ratio (1.618) and identify proportions that deviate by more than 10% | Should | Visagism Methodology | FR-005 | Draft |
+| FR-011 | Analysis Report Generation | The system shall generate a text-based or visual report containing: detected face shape, calculated proportions with golden ratio comparison | Must | Assignment Spec §2.4 | FR-006, FR-007 | Draft |
+| FR-012 | Error Handling | The system shall gracefully handle errors including: no face detected, multiple faces detected (use largest), poor image quality, non-frontal poses with user warning | Must | Assignment Spec §2.5 | FR-002 | Draft |
+
+### Detailed Acceptance Criteria
+
+#### FR-001: Face Photo Input
+**Description**: The system shall accept frontal face photographs in common formats (JPG, PNG) from file upload or directory path.
+**Priority**: Must
+**Source**: Assignment Spec §2.1
+**Dependencies**: None
+**Acceptance Criteria**:
+- [ ] Accept JPG/JPEG images with .jpg, .jpeg extensions
+- [ ] Accept PNG images with .png extension
+- [ ] Accept image via command-line argument with valid file path
+- [ ] Return clear error message for unsupported formats (e.g., "Unsupported format: .gif. Use JPG or PNG")
+- [ ] Return clear error message for non-existent file path (e.g., "File not found: /path/to/image.jpg")
+- [ ] Handle images with minimum resolution of 200x200 pixels
+**Status**: Draft
+
+#### FR-002: Face Detection
+**Description**: The system shall detect the presence of a human face in the input image using OpenCV cascade classifier or dlib.
+**Priority**: Must
+**Source**: Assignment Spec §2.2
+**Dependencies**: FR-001
+**Acceptance Criteria**:
+- [ ] Detect at least one face in images containing clear frontal faces
+- [ ] Return bounding box coordinates (x, y, width, height) for detected face
+- [ ] Handle multiple faces by selecting the largest face in the image
+- [ ] Return "No face detected" message with suggestion for better photo when no face found
+- [ ] Process detection within 2 seconds for images up to 1920x1080 resolution
+**Status**: Draft
+
+#### FR-003: Facial Landmark Detection
+**Description**: The system shall identify and map 68 facial landmarks including jawline (17 points), eyebrows (10 points), nose (9 points), eyes (12 points), and mouth (20 points).
+**Priority**: Must
+**Source**: Visagism Methodology
+**Dependencies**: FR-002
+**Acceptance Criteria**:
+- [ ] Detect all 68 landmark points as (x, y) coordinates
+- [ ] Correctly identify jawline points (points 1-17)
+- [ ] Correctly identify left eyebrow points (points 18-22) and right eyebrow points (points 23-27)
+- [ ] Correctly identify nose bridge (points 28-30) and nose tip with nostrils (points 31-36)
+- [ ] Correctly identify left eye (points 37-42) and right eye (points 43-48)
+- [ ] Correctly identify outer mouth (points 49-60) and inner mouth (points 61-68)
+- [ ] Achieve landmark detection accuracy ≥90% compared to manual annotation on test set
+- [ ] Process landmark detection within 3 seconds per image
+**Status**: Draft
+
+#### FR-004: Landmark Visualization
+**Description**: The system shall display the original image with overlaid landmark points and connecting lines for visual verification.
+**Priority**: Must
+**Source**: Assignment Spec §2.3
+**Dependencies**: FR-003
+**Acceptance Criteria**:
+- [ ] Display original image in a window or save to file
+- [ ] Plot all 68 landmark points as colored circles on the image
+- [ ] Draw connecting lines between landmarks to show facial structure (jawline, eyebrows, eyes, nose, mouth)
+- [ ] Use distinct colors for different facial regions (e.g., green for jawline, blue for eyes, red for mouth)
+- [ ] Save visualization to output file (e.g., output_landmarks.jpg) when not displaying window
+- [ ] Include legend or labels for facial regions
+**Status**: Draft
+
+#### FR-005: Facial Proportion Calculation
+**Description**: The system shall calculate facial proportions including: face width-to-height ratio, three facial thirds, eye spacing ratio, jawline angle.
+**Priority**: Must
+**Source**: Visagism Methodology
+**Dependencies**: FR-003
+**Acceptance Criteria**:
+- [ ] Calculate face width (distance between leftmost and rightmost jawline points)
+- [ ] Calculate face height (distance from hairline estimate to chin point)
+- [ ] Calculate width-to-height ratio with precision to 2 decimal places
+- [ ] Calculate superior third (hairline to eyebrows) height
+- [ ] Calculate medium third (eyebrows to nose base) height
+- [ ] Calculate inferior third (nose base to chin) height
+- [ ] Calculate eye spacing (distance between pupils)
+- [ ] Calculate jawline angle (angle formed by jawline points)
+- [ ] All measurements output in pixels with conversion to centimeters using known reference (e.g., eye distance ~6.3cm)
+**Status**: Draft
+
+#### FR-006: Face Shape Classification
+**Description**: The system shall classify the face shape into one of 7 categories based on calculated proportions and landmark positions.
+**Priority**: Must
+**Source**: Visagism Methodology
+**Dependencies**: FR-005
+**Acceptance Criteria**:
+- [ ] Classify as **Oval** when: width-to-height ratio ~1.5, jawline slightly rounded, thirds balanced
+- [ ] Classify as **Round** when: width-to-height ratio ~1.0, jawline curved, cheeks full
+- [ ] Classify as **Square** when: width-to-height ratio ~1.0, jawline angular (90°), forehead and jaw similar width
+- [ ] Classify as **Oblong** when: width-to-height ratio <0.7, face significantly longer than wide
+- [ ] Classify as **Heart** when: forehead widest, jaw narrows to pointed chin
+- [ ] Classify as **Triangle** when: jawline widest, forehead narrowest
+- [ ] Classify as **Diamond** when: cheekbones widest, forehead and jaw narrow
+- [ ] Output confidence score or primary indicators used for classification
+- [ ] Achieve ≥85% accuracy on test set of 20+ labeled images
+**Status**: Draft
+
+#### FR-007: Golden Ratio Analysis
+**Description**: The system shall compare calculated facial proportions against the golden ratio (1.618) and identify proportions that deviate by more than 10%.
+**Priority**: Should
+**Source**: Visagism Methodology
+**Dependencies**: FR-005
+**Acceptance Criteria**:
+- [ ] Calculate golden ratio deviation for width-to-height ratio
+- [ ] Calculate golden ratio deviation for each facial third (ideal: each third = 1/3 of total height)
+- [ ] Calculate golden ratio deviation for eye spacing (ideal: one eye width between pupils)
+- [ ] Flag proportions deviating >10% from golden ratio ideal
+- [ ] Output percentage deviation for each measured proportion
+- [ ] Include golden ratio analysis in the final report
+**Status**: Draft
+
+#### FR-011: Analysis Report Generation
+**Description**: The system shall generate a text-based or visual report containing analysis results.
+**Priority**: Must
+**Source**: Assignment Spec §2.4
+**Dependencies**: FR-006, FR-007
+**Acceptance Criteria**:
+- [ ] Generate report in text format (.txt) or console output
+- [ ] Include detected face shape with confidence indicators
+- [ ] Include all calculated proportions with measurements
+- [ ] Include golden ratio analysis with deviation percentages
+- [ ] Report is human-readable with clear section headers
+- [ ] Save report to file named "analysis_report_[timestamp].txt" or display in console
+**Status**: Draft
+
+#### FR-012: Error Handling
+**Description**: The system shall gracefully handle errors including no face detected, multiple faces, poor quality, non-frontal poses.
+**Priority**: Must
+**Source**: Assignment Spec §2.5
+**Dependencies**: FR-002
+**Acceptance Criteria**:
+- [ ] Display "No face detected. Please provide a clear frontal photo." when no face found
+- [ ] When multiple faces detected, use largest face and display "Multiple faces detected. Analyzing largest face."
+- [ ] Detect non-frontal pose (head rotation >30°) and warn "Image appears non-frontal. For best results, use a frontal photo."
+- [ ] Detect low resolution (<200x200) and warn "Image resolution low. Recommended minimum: 200x200 pixels."
+- [ ] Handle corrupted image files with "Error: Cannot read image file. File may be corrupted."
+- [ ] All errors should not crash the program; return meaningful messages and exit gracefully
+**Status**: Draft
+
+---
+
+## 4. Non-Functional Requirements
+
+| ID | Category | Description | Metric | Target |
+|----|----------|-------------|--------|--------|
+| NFR-001 | Performance | Face detection and landmark detection processing time | Processing time per image | <5 seconds for 1920x1080 image on standard hardware |
+| NFR-002 | Accuracy | Facial landmark detection accuracy | Percentage match with manual annotation | ≥90% accuracy on test set of 20+ images |
+| NFR-003 | Accuracy | Face shape classification accuracy | Percentage correct classification | ≥85% accuracy compared to manual classification |
+| NFR-004 | Usability | Ease of use for assignment demonstration | Setup time for demo | Demo ready within 2 minutes (simple command-line execution) |
+| NFR-005 | Reliability | System stability during processing | Crash rate | 0 crashes during normal operation; graceful error handling |
+| NFR-006 | Compatibility | Operating system support | Supported platforms | Linux (Ubuntu 20.04+), macOS, Windows 10+ |
+| NFR-007 | Maintainability | Code documentation and structure | Code comments and docstrings | ≥85% of functions documented with docstrings |
+| NFR-008 | Portability | Dependency management | Requirements file | All dependencies listed in requirements.txt with version pins |
+
+---
+
+## 5. Architecture Overview
+
+### 5.1 Components
+
+| Component | Purpose | Responsibilities |
+|-----------|---------|-----------------|
+| Image Input Module | Handle image loading and validation | Read image files, validate format/resolution, handle errors |
+| Face Detection Module | Detect faces in images | Use OpenCV cascade or dlib to locate faces, return bounding boxes |
+| Landmark Detection Module | Identify 68 facial landmarks | Use dlib shape predictor or similar to map facial points |
+| Proportion Calculator | Calculate facial measurements | Compute ratios, angles, thirds from landmark coordinates |
+| Face Shape Classifier | Classify face into 7 shape categories | Apply visagism rules to determine face shape |
+| Visagism Analyzer | Compare proportions to golden ratio | Identify deviations and generate analysis |
+| Visualization Module | Display landmarks and measurements | Overlay points/lines on image, create output visualization |
+| Report Generator | Create analysis reports | Compile results into text/visual report format |
+
+### 5.2 Data Models
+
+#### Model: FacialLandmarks
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| image_path | String | Yes | Path to input image |
+| face_rect | Tuple (x, y, w, h) | Yes | Bounding box of detected face |
+| landmarks_68 | List of (x, y) tuples | Yes | 68 landmark coordinates |
+| landmarks_by_region | Dict | Yes | Landmarks grouped by region (jaw, brows, nose, eyes, mouth) |
+
+#### Model: FacialProportions
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| face_width | Float | Yes | Face width in pixels |
+| face_height | Float | Yes | Face height in pixels |
+| width_height_ratio | Float | Yes | Ratio of width to height |
+| third_superior | Float | Yes | Height of superior third (hairline to brows) |
+| third_medium | Float | Yes | Height of medium third (brows to nose) |
+| third_inferior | Float | Yes | Height of inferior third (nose to chin) |
+| eye_spacing | Float | Yes | Distance between pupils |
+| jawline_angle | Float | Yes | Angle of jawline in degrees |
+
+#### Model: FaceAnalysis
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| face_shape | String | Yes | Classified shape (Oval, Round, Square, etc.) |
+| shape_confidence | Float | No | Confidence score for classification |
+| golden_ratio_deviations | Dict | No | Proportions deviating >10% from golden ratio |
+
+### 5.3 Technology Stack
+- **Language**: Python 3.8+
+- **Computer Vision**: OpenCV 4.x (opencv-python)
+- **Landmark Detection**: dlib 19.x with 68-point shape predictor model
+- **Numerical Computation**: NumPy
+- **Image Processing**: PIL/Pillow (optional, for advanced image operations)
+- **Visualization**: Matplotlib (optional, for plotting landmarks)
+
+### 5.4 External Dependencies
+- **dlib 68-point shape predictor model**: File `shape_predictor_68_face_landmarks.dat` (download separately, ~100MB)
+- **OpenCV Haar Cascade**: Built-in `haarcascade_frontalface_default.xml`
+
+---
+
+## 6. Interfaces
+
+### 6.1 User Interface
+- **Primary Interface**: Command-line interface (CLI)
+- **Usage**: `python visagism_analyzer.py --input <image_path> [--output <output_dir>] [--visualize]`
+- **Example**:
+  ```bash
+  # Process single image
+  python visagism_analyzer.py --input photos/face.jpg --visualize
+  ```
+
+### 6.2 Input Format
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| --input | String (path) | Yes | Path to image file |
+| --output | String (path) | No | Output directory for results (default: ./output) |
+| --visualize | Flag | No | Display landmark visualization window |
+| --save-viz | Flag | No | Save visualization to file without displaying |
+
+### 6.3 Output Format
+- **Console Output**: Analysis summary with face shape and golden ratio comparisons
+- **Report File**: `analysis_report_[timestamp].txt` containing full analysis
+- **Visualization File**: `landmarks_[original_filename].jpg` with overlaid landmarks
+
+### 6.4 Error Handling
+- All errors displayed in clear, user-friendly messages
+- No stack traces shown to end user (logged internally if needed)
+- Exit codes: 0 = success, 1 = error (no face detected, invalid input, etc.)
+
+---
+
+## 7. Testing Strategy
+
+### 7.1 Unit Tests
+- **Coverage Target**: ≥85% code coverage
+- **Framework**: pytest
+- **Test Areas**:
+  - Image input validation (valid/invalid formats, missing files)
+  - Face detection with known test images
+  - Landmark detection accuracy against manual annotations
+  - Proportion calculations with known measurements
+  - Face shape classification against labeled dataset
+  - Golden ratio deviation calculations
+  - Error handling scenarios
+
+### 7.2 Integration Tests
+- **End-to-end pipeline**: Input image → detection → landmarks → proportions → shape → golden ratio → report
+- **Visualization**: Landmark overlay matches expected output
+
+### 7.3 Validation Tests
+- **Test Dataset**: 20+ diverse face images with manual annotations
+  - Various face shapes (3+ per category)
+  - Different ages, genders, ethnicities
+  - Various lighting conditions and image qualities
+- **Accuracy Metrics**:
+  - Landmark detection: Compare to manual (x, y) coordinates (±5 pixels tolerance)
+  - Face shape: Compare to manual classification
+  - Proportions: Verify calculations manually
+
+### 7.4 Demo Testing
+- **Pre-demo checklist**: Verify on 5 test images before presentation
+- **Fallback images**: Have 3 guaranteed-working images for live demo
+- **Performance**: Verify processing time <5 seconds per image
+
+---
+
+## 8. Risks & Constraints
+
+### 8.1 Risks
+
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| dlib shape predictor model file unavailable (100MB download) | High - Cannot detect landmarks | Provide alternative using OpenCV only; include download script in repo |
+| Poor landmark detection on non-frontal or occluded faces | Medium - Reduced accuracy | Document limitations; warn user about photo requirements |
+| Face shape classification accuracy below 85% | Medium - Assignment grade impact | Use ensemble of rules; manual tuning with test dataset |
+| Processing time exceeds 5 seconds per image | Low - Demo inconvenience | Optimize code; use faster detection methods; pre-load models |
+| Test dataset insufficient for validation | Medium - Cannot verify accuracy | Use public datasets (e.g., Labeled Faces in the Wild) for additional test cases |
+| Assignment scope creep (adding too many features) | Medium - Miss deadline | Strictly follow Non-Goals section; focus on Must-priority requirements |
+
+### 8.2 Constraints
+- **Timeline**: Final presentation by May 28, 2026 (3 weeks from start)
+- **Team Size**: 2 students (limited development resources)
+- **Hardware**: Standard laptop computing power (no GPU acceleration required)
+- **Assignment Level**: Targeting Level 1-2 (single solution or dataset acquisition with comparison)
+- **Academic Integrity**: Must reference all non-original code/libraries explicitly (per assignment warning)
+- **Technology**: Must use OpenCV (assignment requirement)
+- **Deployment**: Must run locally (no cloud services for assignment submission)
+
+### 8.3 Assumptions
+- User will provide clear, frontal face photographs
+- Single face per image (or largest face can be selected)
+- dlib 68-point model file will be available for download
+- Python 3.8+ and pip available on development machines
+- Test images can be acquired or generated for validation
+
+---
+
+## 9. Appendices
+
+### 9.1 Glossary
+- **Visagism**: Science of personal image analysis through facial proportion study (from French "visage" = face)
+- **68-Point Landmark Model**: Standard facial landmark detection model identifying 68 key points
+- **Facial Thirds**: Division of face into three horizontal sections (superior, medium, inferior)
+- **Golden Ratio (Phi)**: Mathematical ratio 1.618, considered aesthetically pleasing
+- **Face Shape**: Classification based on facial geometry (Oval, Round, Square, Oblong, Heart, Triangle, Diamond)
+
+### 9.2 Reference Images
+- Example landmark positions: https://pandami.com.br/blog/visagismo-cabelo-guia-completo
+- dlib 68-point model visualization: http://dlib.net/face_landmark_detection.py.html
+
+### 9.3 Related Documents
+- Computer Vision Assignment Specification (Universidade de Aveiro, 2025/2026)
+- OpenCV Documentation: https://docs.opencv.org/
+- dlib Documentation: http://dlib.net/
+
+---
+
+*End of Functional Specification*
