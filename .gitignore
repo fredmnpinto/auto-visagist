@@ -10,8 +10,8 @@ __pycache__/
 *.pyo
 .pytest_cache/
 
-# Model file (large binary, ~100MB)
-data/shape_predictor_68_face_landmarks.dat
+# Model files (large binaries, ~100MB)
+data/
 
 # Editor
 .vscode/
