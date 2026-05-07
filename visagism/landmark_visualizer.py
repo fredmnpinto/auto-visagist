@@ -146,6 +146,7 @@ class LandmarkVisualizer:
             Window title (default: "Facial Landmarks").
         """
         if self._gui_available():
+            cv2.namedWindow(title, cv2.WINDOW_GUI_NORMAL)
             cv2.imshow(title, img)
             print("Press any key to close the visualization window.")
             cv2.waitKey(0)
