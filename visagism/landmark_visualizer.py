@@ -7,6 +7,10 @@ from pathlib import Path
 import cv2
 
 from visagism.constants import (
+    HAIRLINE_COLOR,
+    HAIRLINE_DASH_LENGTH,
+    HAIRLINE_GAP_LENGTH,
+    HAIRLINE_LINE_THICKNESS,
     LANDMARK_LINE_THICKNESS,
     LANDMARK_POINT_RADIUS,
     LEGEND_ALPHA,
@@ -78,10 +82,57 @@ class LandmarkVisualizer:
                         LANDMARK_LINE_THICKNESS,
                     )
 
+        # Draw hairline if available
+        annotated = self.draw_hairline(annotated, landmarks)
+
         # Add legend
         self._add_legend(annotated)
 
         return annotated
+
+    def draw_hairline(
+        self,
+        img_bgr: ImageArray,
+        landmarks: FacialLandmarks,
+    ) -> ImageArray:
+        """Draw a dashed horizontal line at the hairline position.
+
+        Parameters
+        ----------
+        img_bgr : ImageArray
+            Image to draw on.
+        landmarks : FacialLandmarks
+            Detected landmark data. If ``hairline_y`` is None, the image
+            is returned unchanged.
+
+        Returns
+        -------
+        ImageArray
+            Image with hairline drawn (or original if no hairline).
+        """
+        if landmarks.hairline_y is None:
+            return img_bgr
+
+        fx, fy, fw, fh = landmarks.face_rect
+        y = landmarks.hairline_y
+        x_start = fx
+        x_end = fx + fw
+
+        # Draw dashed line: segments of length HAIRLINE_DASH_LENGTH
+        # separated by gaps of length HAIRLINE_GAP_LENGTH
+        x = x_start
+        while x < x_end:
+            seg_end = min(x + HAIRLINE_DASH_LENGTH, x_end)
+            cv2.line(
+                img_bgr,
+                (x, y),
+                (seg_end, y),
+                HAIRLINE_COLOR,
+                HAIRLINE_LINE_THICKNESS,
+            )
+            x = seg_end + HAIRLINE_GAP_LENGTH
+
+        return img_bgr
 
     def _add_legend(self, img: ImageArray) -> None:
         """Add a semi-transparent legend box in the top-left corner.

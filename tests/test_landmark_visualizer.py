@@ -119,3 +119,61 @@ class TestLandmarkVisualizer:
         # Check that the image has been modified in the regions where landmarks are
         # (landmarks are at varying positions)
         assert result.shape == sample_image_rgb.shape
+
+    def test_draw_hairline_with_hairline_y(
+        self, sample_image_rgb: np.ndarray, sample_landmarks_with_hairline
+    ) -> None:
+        """Test that draw_hairline draws a dashed line when hairline_y is set."""
+        viz = LandmarkVisualizer()
+        result = viz.draw_hairline(
+            sample_image_rgb.copy(), sample_landmarks_with_hairline
+        )
+
+        # The image should have been modified (yellow dashed line drawn)
+        assert not np.array_equal(result, sample_image_rgb)
+
+        # Check that at least one pixel on the hairline row is yellow
+        y = sample_landmarks_with_hairline.hairline_y
+        face_rect = sample_landmarks_with_hairline.face_rect
+        x_start = face_rect[0]
+        x_end = face_rect[0] + face_rect[2]
+
+        # Look for yellow pixels (BGR: 0, 255, 255) on the hairline row
+        row = result[y, x_start:x_end]
+        yellow_pixels = np.where(
+            (row[:, 0] == 0) & (row[:, 1] == 255) & (row[:, 2] == 255)
+        )[0]
+        assert len(yellow_pixels) > 0
+
+    def test_draw_hairline_without_hairline_y(
+        self, sample_image_rgb: np.ndarray, sample_landmarks
+    ) -> None:
+        """Test that draw_hairline returns image unchanged when hairline_y is None."""
+        viz = LandmarkVisualizer()
+        original = sample_image_rgb.copy()
+        result = viz.draw_hairline(original, sample_landmarks)
+
+        # Image should be unchanged
+        assert np.array_equal(result, original)
+
+    def test_draw_landmarks_includes_hairline(
+        self, sample_image_rgb: np.ndarray, sample_landmarks_with_hairline
+    ) -> None:
+        """Test that draw_landmarks includes the hairline when set."""
+        viz = LandmarkVisualizer()
+        result = viz.draw_landmarks(sample_image_rgb, sample_landmarks_with_hairline)
+
+        # The result should differ from original (hairline drawn)
+        assert not np.array_equal(result, sample_image_rgb)
+
+        # Check for yellow pixels on the hairline row
+        y = sample_landmarks_with_hairline.hairline_y
+        face_rect = sample_landmarks_with_hairline.face_rect
+        x_start = face_rect[0]
+        x_end = face_rect[0] + face_rect[2]
+
+        row = result[y, x_start:x_end]
+        yellow_pixels = np.where(
+            (row[:, 0] == 0) & (row[:, 1] == 255) & (row[:, 2] == 255)
+        )[0]
+        assert len(yellow_pixels) > 0

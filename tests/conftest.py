@@ -65,6 +65,28 @@ def sample_landmarks() -> FacialLandmarks:
 
 
 @pytest.fixture
+def sample_landmarks_with_hairline() -> FacialLandmarks:
+    """Create sample FacialLandmarks with hairline_y set."""
+    pts = [(100 + i, 100 + i // 2) for i in range(68)]
+    landmarks_68 = list(pts)
+
+    from visagism.constants import REGION_INDICES
+
+    landmarks_by_region: LandmarkRegions = {
+        name: [landmarks_68[i] for i in indices]
+        for name, indices in REGION_INDICES.items()
+    }
+
+    return FacialLandmarks(
+        image_path=Path("/fake/test.jpg"),
+        face_rect=(50, 50, 200, 250),
+        landmarks_68=landmarks_68,
+        landmarks_by_region=landmarks_by_region,
+        hairline_y=80,
+    )
+
+
+@pytest.fixture
 def small_image_path(tmp_path: Path) -> Path:
     """Create a too-small 100x100 image and return its path."""
     img = np.zeros((100, 100, 3), dtype=np.uint8)

@@ -15,6 +15,11 @@ from visagism.constants import (
     HAAR_MIN_FACE_SIZE,
     HAAR_MIN_NEIGHBORS,
     HAAR_SCALE_FACTOR,
+    HAIRLINE_CANNY_HIGH,
+    HAIRLINE_CANNY_LOW,
+    HAIRLINE_CLAHE_CLIP,
+    HAIRLINE_CLAHE_GRID,
+    HAIRLINE_MIN_GRADIENT_RATIO,
     LANDMARK_LINE_THICKNESS,
     LANDMARK_POINT_RADIUS,
     LEGEND_ALPHA,
@@ -44,6 +49,7 @@ from visagism.errors import (
     UnsupportedFormatError,
     VisagismError,
 )
+from visagism.hairline_detector import HairlineDetector
 from visagism.types import (
     FaceRect,
     FacialLandmarks,
@@ -62,6 +68,11 @@ __all__ = [
     "HAAR_MIN_FACE_SIZE",
     "HAAR_MIN_NEIGHBORS",
     "HAAR_SCALE_FACTOR",
+    "HAIRLINE_CANNY_HIGH",
+    "HAIRLINE_CANNY_LOW",
+    "HAIRLINE_CLAHE_CLIP",
+    "HAIRLINE_CLAHE_GRID",
+    "HAIRLINE_MIN_GRADIENT_RATIO",
     "LANDMARK_LINE_THICKNESS",
     "LANDMARK_POINT_RADIUS",
     "LEGEND_ALPHA",
@@ -89,6 +100,8 @@ __all__ = [
     "NoFaceDetectedError",
     "UnsupportedFormatError",
     "VisagismError",
+    # Modules
+    "HairlineDetector",
     # Types
     "FaceRect",
     "FacialLandmarks",

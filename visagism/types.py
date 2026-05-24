@@ -26,7 +26,7 @@ LandmarkRegions = Dict[str, List[Point]]
 """Landmarks grouped by facial region name."""
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=False)
 class FacialLandmarks:
     """Container for all detected facial landmark data.
 
@@ -48,3 +48,4 @@ class FacialLandmarks:
     face_rect: FaceRect
     landmarks_68: LandmarksList = field(default_factory=list)
     landmarks_by_region: LandmarkRegions = field(default_factory=dict)
+    hairline_y: int | None = None

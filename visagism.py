@@ -15,11 +15,13 @@ Examples::
 
 from __future__ import annotations
 
+import dataclasses
 import sys
 
 from visagism.cli import CliParser
 from visagism.errors import VisagismError
 from visagism.face_detector import FaceDetector
+from visagism.hairline_detector import HairlineDetector
 from visagism.image_loader import ImageLoader
 from visagism.landmark_detector import LandmarkDetector
 from visagism.landmark_visualizer import LandmarkVisualizer
@@ -30,7 +32,7 @@ def main() -> None:
     """Run the Facial Visagism Analysis pipeline.
 
     Parses command-line arguments, loads the image, detects a face,
-    optionally detects landmarks and visualizes them.
+    detects landmarks, estimates hairline, and optionally visualizes.
     """
     try:
         config = CliParser.parse()
@@ -51,22 +53,29 @@ def main() -> None:
             f"size {face_rect[2]}x{face_rect[3]}"
         )
 
-        # Detect landmarks and visualize if requested
-        if config.visualize or config.save_viz:
-            model_path = ModelFinder.find(config.model_path)
-            landmark_detector = LandmarkDetector(model_path)
-            landmarks = landmark_detector.detect(
-                img_gray, face_rect, config.input_path
+        # Detect landmarks (always runs)
+        model_path = ModelFinder.find(config.model_path)
+        landmark_detector = LandmarkDetector(model_path)
+        landmarks = landmark_detector.detect(
+            img_gray, face_rect, config.input_path
+        )
+        print(f"Detected {len(landmarks.landmarks_68)} facial landmarks")
+
+        # Check for non-frontal pose
+        if not LandmarkDetector.check_pose(landmarks.landmarks_68):
+            print(
+                "Warning: Image appears non-frontal. "
+                "For best results, use a frontal photo."
             )
-            print(f"Detected {len(landmarks.landmarks_68)} facial landmarks")
 
-            # Check for non-frontal pose
-            if not LandmarkDetector.check_pose(landmarks.landmarks_68):
-                print(
-                    "Warning: Image appears non-frontal. "
-                    "For best results, use a frontal photo."
-                )
+        # Detect hairline (always runs)
+        hairline_detector = HairlineDetector()
+        hairline_y, method = hairline_detector.detect(img_gray, landmarks)
+        landmarks = dataclasses.replace(landmarks, hairline_y=hairline_y)
+        print(f"Estimated hairline at y={hairline_y} (method={method})")
 
+        # Visualize if requested
+        if config.visualize or config.save_viz:
             viz = LandmarkVisualizer()
             annotated = viz.draw_landmarks(img_bgr, landmarks)
 

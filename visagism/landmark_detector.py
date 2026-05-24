@@ -73,12 +73,14 @@ class LandmarkDetector:
 
         landmarks_by_region = self._group_by_region(landmarks_68)
 
-        return FacialLandmarks(
+        facial_landmarks = FacialLandmarks(
             image_path=image_path,
             face_rect=face_rect,
             landmarks_68=landmarks_68,
             landmarks_by_region=landmarks_by_region,
         )
+
+        return facial_landmarks
 
     @staticmethod
     def check_pose(landmarks_68: LandmarksList) -> bool:
