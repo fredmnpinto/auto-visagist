@@ -122,9 +122,14 @@ class TestHairlineE2E:
         medium_third = nose_tip_y - avg_eyebrow_y
         fallback_y = max(avg_eyebrow_y - medium_third, face_rect[1])
 
-        # Assert detected hairline is within tolerance of fallback
+        # Assert detected hairline is within tolerance of fallback.
+        # With the expanded ROI (up to 25% of face height above the face
+        # bounding box), the detected hairline can legitimately be higher
+        # than the fallback estimate which is clamped to face_rect[1].
         face_height = face_rect[3]
-        tolerance = max(50, int(0.10 * face_height))
+        base_tolerance = max(50, int(0.10 * face_height))
+        upward_expansion = int(0.25 * face_height)
+        tolerance = base_tolerance + upward_expansion
 
         assert abs(hairline_y - fallback_y) <= tolerance, (
             f"hairline_y={hairline_y} deviates too far from fallback={fallback_y} "

@@ -110,6 +110,36 @@ def _show_step(
         cv2.destroyWindow(window_name)
 
 
+def _safe_text_position(
+    img_w: int, preferred_x: int, text: str, font_scale: float, thickness: int
+) -> int:
+    """Clamp text x-position to image bounds, flipping to left if needed.
+
+    Parameters
+    ----------
+    img_w : int
+        Image width in pixels.
+    preferred_x : int
+        Preferred x-coordinate for the text baseline.
+    text : str
+        Text string to measure.
+    font_scale : float
+        OpenCV font scale.
+    thickness : int
+        OpenCV text thickness.
+
+    Returns
+    -------
+    int
+        Safe x-coordinate that keeps the text within image bounds.
+    """
+    (tw, _), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
+    if preferred_x + tw > img_w - 10:
+        # Draw on left side instead
+        return max(10, preferred_x - tw - 20)
+    return preferred_x
+
+
 def _create_step1_image(
     img_bgr: ImageArray,
     landmarks: FacialLandmarks,
@@ -159,11 +189,22 @@ def _create_step1_image(
     cv2.addWeighted(overlay, 0.3, img_display, 0.7, 0, img_display)
     cv2.rectangle(img_display, (x_start, y_start), (x_end, y_end), (255, 255, 0), 2)
 
+    # Draw dashed line at original face box top to show expansion
+    for x in range(x_start, x_end, 15):
+        x1 = min(x + 8, x_end)
+        cv2.line(img_display, (x, fy), (x1, fy), (0, 255, 255), 2)
+
     # Text labels
+    img_h, img_w = img_display.shape[:2]
     cv2.putText(
         img_display,
         "Face bounding box",
-        (fx + fw + 10, fy + 20),
+        (
+            _safe_text_position(
+                img_w, fx + fw + 10, "Face bounding box", 0.6, 2
+            ),
+            fy + 20,
+        ),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.6,
         (0, 255, 0),
@@ -171,8 +212,27 @@ def _create_step1_image(
     )
     cv2.putText(
         img_display,
+        "Original face top",
+        (
+            _safe_text_position(
+                img_w, x_end + 10, "Original face top", 0.5, 1
+            ),
+            fy,
+        ),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.5,
+        (0, 255, 255),
+        1,
+    )
+    cv2.putText(
+        img_display,
         "Eyebrow line",
-        (x_end + 10, avg_eyebrow_y),
+        (
+            _safe_text_position(
+                img_w, x_end + 10, "Eyebrow line", 0.6, 2
+            ),
+            avg_eyebrow_y,
+        ),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.6,
         (0, 0, 255),
@@ -360,6 +420,8 @@ def _draw_graph_on_canvas(
     color: Tuple[int, int, int] = (180, 130, 70),
     title: str = "",
     y_label: str = "",
+    split_idx: int | None = None,
+    excluded_color: Tuple[int, int, int] | None = None,
 ) -> None:
     """Draw a line graph on the canvas using OpenCV primitives.
 
@@ -387,6 +449,13 @@ def _draw_graph_on_canvas(
         Graph title.
     y_label : str, optional
         Label for the y-axis.
+    split_idx : int | None, optional
+        If provided, the curve is split at this index. The portion before
+        *split_idx* is drawn with *color*; the portion after is drawn with
+        *excluded_color* (if given) or omitted. A vertical boundary line and
+        label are also drawn.
+    excluded_color : tuple[int, int, int] | None, optional
+        BGR color for the excluded portion of the curve (after *split_idx*).
     """
     x_off = _PADDING + 60
     graph_h = _GRAPH_HEIGHT
@@ -439,8 +508,49 @@ def _draw_graph_on_canvas(
         py = y_offset + graph_h - int((val / vmax) * (graph_h - 20)) - 10
         points.append((px, py))
 
-    for i in range(len(points) - 1):
-        cv2.line(canvas, points[i], points[i + 1], color, 2)
+    # Draw curve segments, with optional split between searchable / excluded
+    if split_idx is not None and 0 < split_idx < n:
+        # Searchable portion
+        for i in range(min(split_idx, len(points) - 1)):
+            cv2.line(canvas, points[i], points[i + 1], color, 2)
+        # Excluded portion
+        if excluded_color is not None:
+            for i in range(split_idx, len(points) - 1):
+                cv2.line(canvas, points[i], points[i + 1], excluded_color, 2)
+            # Subtle background shading for excluded region
+            bx = points[split_idx][0]
+            overlay = canvas.copy()
+            cv2.rectangle(
+                overlay,
+                (bx, y_offset),
+                (x_off + graph_w, y_offset + graph_h),
+                (50, 50, 50),
+                -1,
+            )
+            graph_region = canvas[y_offset:y_offset + graph_h, x_off:x_off + graph_w]
+            overlay_region = overlay[y_offset:y_offset + graph_h, x_off:x_off + graph_w]
+            cv2.addWeighted(overlay_region, 0.3, graph_region, 0.7, 0, graph_region)
+            # Boundary line
+            cv2.line(
+                canvas,
+                (bx, y_offset),
+                (bx, y_offset + graph_h),
+                (128, 128, 128),
+                1,
+            )
+            # Label
+            cv2.putText(
+                canvas,
+                "Search boundary",
+                (bx + 5, y_offset + 15),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.4,
+                (160, 160, 160),
+                1,
+            )
+    else:
+        for i in range(len(points) - 1):
+            cv2.line(canvas, points[i], points[i + 1], color, 2)
 
     # Highlight vertical line
     if highlight_idx is not None and 0 <= highlight_idx < n:
@@ -453,15 +563,16 @@ def _draw_graph_on_canvas(
             canvas, (hx, y_offset), (hx, y_offset + graph_h), (0, 0, 255), 2
         )
 
-    # Max point marker
+    # Max point marker (only within searchable region when split is active)
     if max_idx is not None and 0 <= max_idx < n:
-        mx = (
-            x_off + int((max_idx / (n - 1)) * graph_w)
-            if n > 1
-            else x_off + graph_w // 2
-        )
-        my = y_offset + graph_h - int((values[max_idx] / vmax) * (graph_h - 20)) - 10
-        cv2.circle(canvas, (mx, my), 6, (0, 0, 255), -1)
+        if split_idx is None or max_idx < split_idx:
+            mx = (
+                x_off + int((max_idx / (n - 1)) * graph_w)
+                if n > 1
+                else x_off + graph_w // 2
+            )
+            my = y_offset + graph_h - int((values[max_idx] / vmax) * (graph_h - 20)) - 10
+            cv2.circle(canvas, (mx, my), 6, (0, 0, 255), -1)
 
     # Median dashed line
     if median_value is not None:
@@ -547,6 +658,7 @@ def _run_step4_interactive(
     window_name: str,
     roi_enhanced: np.ndarray,
     row_intensities: np.ndarray,
+    searchable_rows: int,
     step_number: int,
     save_path: Path | None,
     auto: bool,
@@ -562,6 +674,8 @@ def _run_step4_interactive(
         CLAHE-enhanced grayscale ROI.
     row_intensities : np.ndarray
         Average intensity per row.
+    searchable_rows : int
+        Number of rows in the searchable region (top 75%).
     step_number : int
         Step number for console output.
     save_path : Path | None
@@ -573,20 +687,46 @@ def _run_step4_interactive(
     """
     canvas, roi_scale, roi_disp_w, roi_disp_h, graph_w = _make_canvas(roi_enhanced)
     roi_h = roi_enhanced.shape[0]
-    row_increment = max(10, int(roi_h * 0.05))
+    row_increment = max(10, int(searchable_rows * 0.05))
 
     print(f"\nStep {step_number}: Average intensity per row — Interactive")
     print("  Press any key to advance rows. Auto-advance is", "ON" if auto else "OFF")
+    print(f"  Searching only top {searchable_rows}/{roi_h} rows (top 75%)")
 
-    # Animation loop
+    # Animation loop — only iterate over searchable rows
     current_row = 0
-    while current_row < roi_h:
+    while current_row < searchable_rows:
         canvas[:] = (20, 20, 20)
 
         _draw_roi_on_canvas(
             canvas, roi_enhanced, roi_scale, roi_disp_w, roi_disp_h,
             highlight_row=current_row,
         )
+
+        # Visually indicate excluded bottom 25% region
+        if searchable_rows < roi_h:
+            x_off = _PADDING + 60
+            excluded_y1 = _PADDING + searchable_rows * roi_scale
+            excluded_y2 = _PADDING + roi_disp_h
+            overlay = canvas.copy()
+            cv2.rectangle(
+                overlay,
+                (x_off, excluded_y1),
+                (x_off + roi_disp_w, excluded_y2),
+                (80, 80, 80),
+                -1,
+            )
+            roi_region = canvas[_PADDING:_PADDING + roi_disp_h, x_off:x_off + roi_disp_w]
+            overlay_region = overlay[_PADDING:_PADDING + roi_disp_h, x_off:x_off + roi_disp_w]
+            cv2.addWeighted(overlay_region, 0.5, roi_region, 0.5, 0, roi_region)
+            # Draw boundary line
+            cv2.line(
+                canvas,
+                (x_off, excluded_y1),
+                (x_off + roi_disp_w, excluded_y1),
+                (128, 128, 128),
+                2,
+            )
 
         graph_y = _PADDING + roi_disp_h + _PADDING
         _draw_graph_on_canvas(
@@ -599,12 +739,15 @@ def _run_step4_interactive(
             color=(180, 130, 70),
             title="Average intensity per row",
             y_label="Intensity",
+            split_idx=searchable_rows,
+            excluded_color=(100, 100, 100),
         )
 
         text_y = graph_y + _GRAPH_HEIGHT + _PADDING
         intensity_val = float(row_intensities[current_row])
         status_text = (
-            f"Row {current_row}/{roi_h} | Intensity: {intensity_val:.1f} | "
+            f"Row {current_row}/{searchable_rows} (searchable) | "
+            f"Intensity: {intensity_val:.1f} | "
             f"Press any key to scan..."
         )
         _draw_text_bar(canvas, status_text, text_y)
@@ -619,7 +762,7 @@ def _run_step4_interactive(
 
     # Final summary frame
     canvas[:] = (20, 20, 20)
-    min_idx = int(np.argmin(row_intensities))
+    min_idx = int(np.argmin(row_intensities[:searchable_rows]))
 
     _draw_roi_on_canvas(
         canvas, roi_enhanced, roi_scale, roi_disp_w, roi_disp_h,
@@ -628,6 +771,30 @@ def _run_step4_interactive(
         row_intensities=row_intensities,
     )
 
+    # Visually indicate excluded bottom 25% region
+    if searchable_rows < roi_h:
+        x_off = _PADDING + 60
+        excluded_y1 = _PADDING + searchable_rows * roi_scale
+        excluded_y2 = _PADDING + roi_disp_h
+        overlay = canvas.copy()
+        cv2.rectangle(
+            overlay,
+            (x_off, excluded_y1),
+            (x_off + roi_disp_w, excluded_y2),
+            (80, 80, 80),
+            -1,
+        )
+        roi_region = canvas[_PADDING:_PADDING + roi_disp_h, x_off:x_off + roi_disp_w]
+        overlay_region = overlay[_PADDING:_PADDING + roi_disp_h, x_off:x_off + roi_disp_w]
+        cv2.addWeighted(overlay_region, 0.5, roi_region, 0.5, 0, roi_region)
+        cv2.line(
+            canvas,
+            (x_off, excluded_y1),
+            (x_off + roi_disp_w, excluded_y1),
+            (128, 128, 128),
+            2,
+        )
+
     graph_y = _PADDING + roi_disp_h + _PADDING
     _draw_graph_on_canvas(
         canvas,
@@ -635,16 +802,20 @@ def _run_step4_interactive(
         graph_w,
         graph_y,
         highlight_idx=min_idx,
+        max_idx=min_idx,
         y_max=255.0,
         color=(180, 130, 70),
         title="Average intensity per row  (FINAL)",
         y_label="Intensity",
+        split_idx=searchable_rows,
+        excluded_color=(100, 100, 100),
     )
 
     text_y = graph_y + _GRAPH_HEIGHT + _PADDING
     min_val = float(row_intensities[min_idx])
     summary_text = (
-        f"MIN INTENSITY at row {min_idx} = {min_val:.1f} (darkest = likely hair) | "
+        f"MIN INTENSITY at row {min_idx} = {min_val:.1f} (darkest = likely hair) "
+        f"within searchable region | "
         f"Press any key to continue..."
     )
     _draw_text_bar(canvas, summary_text, text_y)
@@ -665,7 +836,11 @@ def _run_step5_interactive(
     abs_gradient: np.ndarray,
     max_gradient_idx: int,
     max_gradient_value: float,
+    max_gradient_value_full: float,
     median_gradient: float,
+    searchable_rows: int,
+    hairline_y: int,
+    y_start: int,
     step_number: int,
     save_path: Path | None,
     auto: bool,
@@ -682,11 +857,19 @@ def _run_step5_interactive(
     abs_gradient : np.ndarray
         Absolute gradient per row.
     max_gradient_idx : int
-        Index of maximum gradient.
+        Index of maximum gradient within the searchable region.
     max_gradient_value : float
-        Maximum gradient value.
+        Maximum gradient value within the searchable region.
+    max_gradient_value_full : float
+        Maximum gradient value over the full array (for graph scaling).
     median_gradient : float
         Median gradient value.
+    searchable_rows : int
+        Number of rows in the searchable region (top 75%).
+    hairline_y : int
+        Detected hairline y-coordinate in original image space.
+    y_start : int
+        Top y-coordinate of the ROI in original image space.
     step_number : int
         Step number for console output.
     save_path : Path | None
@@ -698,20 +881,46 @@ def _run_step5_interactive(
     """
     canvas, roi_scale, roi_disp_w, roi_disp_h, graph_w = _make_canvas(roi_enhanced)
     roi_h = roi_enhanced.shape[0]
-    row_increment = max(10, int(roi_h * 0.05))
+    row_increment = max(10, int(searchable_rows * 0.05))
 
     print(f"\nStep {step_number}: Vertical gradient — Interactive")
     print("  Press any key to advance rows. Auto-advance is", "ON" if auto else "OFF")
+    print(f"  Searching only top {searchable_rows}/{roi_h} rows (top 75%)")
 
-    # Animation loop
+    # Animation loop — only iterate over searchable rows
     current_row = 0
-    while current_row < roi_h:
+    while current_row < searchable_rows:
         canvas[:] = (20, 20, 20)
 
         _draw_roi_on_canvas(
             canvas, roi_enhanced, roi_scale, roi_disp_w, roi_disp_h,
             highlight_row=current_row,
         )
+
+        # Visually indicate excluded bottom 25% region
+        if searchable_rows < roi_h:
+            x_off = _PADDING + 60
+            excluded_y1 = _PADDING + searchable_rows * roi_scale
+            excluded_y2 = _PADDING + roi_disp_h
+            overlay = canvas.copy()
+            cv2.rectangle(
+                overlay,
+                (x_off, excluded_y1),
+                (x_off + roi_disp_w, excluded_y2),
+                (80, 80, 80),
+                -1,
+            )
+            roi_region = canvas[_PADDING:_PADDING + roi_disp_h, x_off:x_off + roi_disp_w]
+            overlay_region = overlay[_PADDING:_PADDING + roi_disp_h, x_off:x_off + roi_disp_w]
+            cv2.addWeighted(overlay_region, 0.5, roi_region, 0.5, 0, roi_region)
+            # Draw boundary line
+            cv2.line(
+                canvas,
+                (x_off, excluded_y1),
+                (x_off + roi_disp_w, excluded_y1),
+                (128, 128, 128),
+                2,
+            )
 
         graph_y = _PADDING + roi_disp_h + _PADDING
         _draw_graph_on_canvas(
@@ -720,16 +929,18 @@ def _run_step5_interactive(
             graph_w,
             graph_y,
             highlight_idx=current_row,
-            y_max=max_gradient_value,
+            y_max=max_gradient_value_full,
             color=(180, 130, 70),
             title="Vertical gradient magnitude",
             y_label="Gradient",
+            split_idx=searchable_rows,
         )
 
         text_y = graph_y + _GRAPH_HEIGHT + _PADDING
         grad_val = float(abs_gradient[current_row])
         status_text = (
-            f"Row {current_row}/{roi_h} | Gradient: {grad_val:.2f} | "
+            f"Row {current_row}/{searchable_rows} (searchable) | "
+            f"Gradient: {grad_val:.2f} | "
             f"Press any key to scan..."
         )
         _draw_text_bar(canvas, status_text, text_y)
@@ -745,17 +956,43 @@ def _run_step5_interactive(
     # Final summary frame
     canvas[:] = (20, 20, 20)
 
+    detected_row = hairline_y - y_start
     _draw_roi_on_canvas(
         canvas, roi_enhanced, roi_scale, roi_disp_w, roi_disp_h,
-        highlight_row=max_gradient_idx,
+        highlight_row=detected_row,
     )
-    # Thick red line for max gradient
+
+    # Visually indicate excluded bottom 25% region
+    if searchable_rows < roi_h:
+        x_off = _PADDING + 60
+        excluded_y1 = _PADDING + searchable_rows * roi_scale
+        excluded_y2 = _PADDING + roi_disp_h
+        overlay = canvas.copy()
+        cv2.rectangle(
+            overlay,
+            (x_off, excluded_y1),
+            (x_off + roi_disp_w, excluded_y2),
+            (80, 80, 80),
+            -1,
+        )
+        roi_region = canvas[_PADDING:_PADDING + roi_disp_h, x_off:x_off + roi_disp_w]
+        overlay_region = overlay[_PADDING:_PADDING + roi_disp_h, x_off:x_off + roi_disp_w]
+        cv2.addWeighted(overlay_region, 0.5, roi_region, 0.5, 0, roi_region)
+        cv2.line(
+            canvas,
+            (x_off, excluded_y1),
+            (x_off + roi_disp_w, excluded_y1),
+            (128, 128, 128),
+            2,
+        )
+
+    # Thick red line for detected hairline position
     x_off = _PADDING + 60
-    hy_max = _PADDING + max_gradient_idx * roi_scale + roi_scale // 2
+    hy_hairline = _PADDING + detected_row * roi_scale + roi_scale // 2
     cv2.line(
         canvas,
-        (x_off, hy_max),
-        (x_off + roi_disp_w, hy_max),
+        (x_off, hy_hairline),
+        (x_off + roi_disp_w, hy_hairline),
         (0, 0, 255),
         4,
     )
@@ -778,19 +1015,23 @@ def _run_step5_interactive(
         abs_gradient,
         graph_w,
         graph_y,
-        highlight_idx=max_gradient_idx,
+        highlight_idx=detected_row,
         max_idx=max_gradient_idx,
         median_value=median_gradient,
-        y_max=max_gradient_value,
+        y_max=max_gradient_value_full,
         color=(180, 130, 70),
         title="Vertical gradient magnitude  (FINAL)",
         y_label="Gradient",
+        split_idx=searchable_rows,
+        excluded_color=(100, 100, 100),
     )
 
     text_y = graph_y + _GRAPH_HEIGHT + _PADDING
+    detected_row = hairline_y - y_start
     ratio = max_gradient_value / median_gradient
     summary_text = (
-        f"MAX GRADIENT at row {max_gradient_idx} = {max_gradient_value:.2f} | "
+        f"Detected hairline at row {detected_row} (within searchable region) | "
+        f"Max gradient = {max_gradient_value:.2f} at row {max_gradient_idx} | "
         f"Median = {median_gradient:.2f} | Ratio = {ratio:.2f} | "
         f"Press any key to continue..."
     )
@@ -1017,10 +1258,12 @@ def process_image(
     abs_gradient = steps["abs_gradient"]
     max_gradient_idx = steps["max_gradient_idx"]
     max_gradient_value = steps["max_gradient_value"]
+    max_gradient_value_full = steps["max_gradient_value_full"]
     median_gradient = steps["median_gradient"]
     gradient_ratio = steps["gradient_ratio"]
     hairline_y = steps["hairline_y"]
     method = steps["method"]
+    searchable_rows = steps["searchable_rows"]
     x_start, x_end, y_start, y_end = steps["roi_coords"]
 
     roi_width = x_end - x_start
@@ -1030,6 +1273,7 @@ def process_image(
     print(f"\n  Image: {image_path.name}")
     print(f"  Face size: {fw}x{fh} px")
     print(f"  Forehead ROI: {roi_width}x{roi_height} px")
+    print(f"  Searchable rows: {searchable_rows}/{roi_height} (top 75%)")
     print(f"  Max gradient: {max_gradient_value:.2f} at row {max_gradient_idx}")
     print(f"  Median gradient: {median_gradient:.2f}")
     print(f"  Ratio: {gradient_ratio:.2f}")
@@ -1084,6 +1328,7 @@ def process_image(
         "Step 4: Average intensity per row",
         roi_enhanced,
         row_intensities,
+        searchable_rows,
         4,
         save_path=_save_path(4, "intensity_profile"),
         auto=auto,
@@ -1097,7 +1342,11 @@ def process_image(
         abs_gradient,
         max_gradient_idx,
         max_gradient_value,
+        max_gradient_value_full,
         median_gradient,
+        searchable_rows,
+        hairline_y,
+        y_start,
         5,
         save_path=_save_path(5, "gradient_profile"),
         auto=auto,

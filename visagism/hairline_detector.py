@@ -18,6 +18,7 @@ from visagism.constants import (
     HAIRLINE_CLAHE_CLIP,
     HAIRLINE_CLAHE_GRID,
     HAIRLINE_MIN_GRADIENT_RATIO,
+    HAIRLINE_ROI_UPWARD_EXPANSION,
 )
 from visagism.types import FacialLandmarks, ImageArray
 
@@ -69,7 +70,7 @@ class HairlineDetector:
         # 2. Define search region
         x_start = fx
         x_end = fx + fw
-        y_start = fy
+        y_start = max(0, fy - int(fh * HAIRLINE_ROI_UPWARD_EXPANSION))
         y_end = avg_eyebrow_y
 
         # Clamp to image bounds
@@ -117,6 +118,7 @@ class HairlineDetector:
             - ``"abs_gradient"``: Absolute gradient per row (np.ndarray)
             - ``"max_gradient_idx"``: Index of max gradient (int)
             - ``"max_gradient_value"``: Value of max gradient (float)
+            - ``"max_gradient_value_full"``: Max over full gradient array (float)
             - ``"median_gradient"``: Median absolute gradient (float)
             - ``"gradient_ratio"``: Max / median ratio (float)
             - ``"hairline_y"``: Detected hairline y-coordinate (int)
@@ -124,6 +126,7 @@ class HairlineDetector:
             - ``"roi_coords"``: Tuple (x_start, x_end, y_start, y_end)
             - ``"avg_eyebrow_y"``: Average eyebrow y-coordinate (int)
             - ``"face_rect"``: Face bounding box tuple
+            - ``"searchable_rows"``: Number of rows in the searchable region (int)
         """
         avg_eyebrow_y, x_start, x_end, y_start, y_end, roi = self._compute_roi(
             img_gray, landmarks
@@ -194,6 +197,7 @@ class HairlineDetector:
 
         # Find median of absolute gradient for threshold
         abs_gradient = np.abs(gradient)
+        search_abs_gradient = np.abs(search_gradient)
         median_gradient = float(np.median(abs_gradient))
         if median_gradient == 0:
             median_gradient = 1e-6
@@ -218,8 +222,9 @@ class HairlineDetector:
             )
             hairline_y = self._fallback(landmarks, avg_eyebrow_y)
 
-        max_gradient_idx = int(np.argmax(abs_gradient))
-        max_gradient_value = float(abs_gradient[max_gradient_idx])
+        max_gradient_idx = int(np.argmax(search_abs_gradient))
+        max_gradient_value = float(search_abs_gradient[max_gradient_idx])
+        max_gradient_value_full = float(np.max(abs_gradient))
         gradient_ratio = max_gradient_value / median_gradient
 
         return {
@@ -230,6 +235,7 @@ class HairlineDetector:
             "abs_gradient": abs_gradient,
             "max_gradient_idx": max_gradient_idx,
             "max_gradient_value": max_gradient_value,
+            "max_gradient_value_full": max_gradient_value_full,
             "median_gradient": median_gradient,
             "gradient_ratio": gradient_ratio,
             "hairline_y": hairline_y,
@@ -237,6 +243,7 @@ class HairlineDetector:
             "roi_coords": (x_start, x_end, y_start, y_end),
             "avg_eyebrow_y": avg_eyebrow_y,
             "face_rect": face_rect,
+            "searchable_rows": searchable_rows,
         }
 
     def detect(

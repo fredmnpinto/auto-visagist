@@ -111,6 +111,9 @@ REGION_LABELS: dict[str, str] = {
 # Hairline detection — gradient analysis parameters
 HAIRLINE_MIN_GRADIENT_RATIO: float = 2.0
 
+# Upward expansion of forehead ROI above face bounding box (as fraction of face height)
+HAIRLINE_ROI_UPWARD_EXPANSION: float = 0.25
+
 # CLAHE preprocessing parameters for forehead ROI enhancement
 HAIRLINE_CLAHE_CLIP: float = 2.0
 HAIRLINE_CLAHE_GRID: tuple[int, int] = (8, 8)

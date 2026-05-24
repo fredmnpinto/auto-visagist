@@ -174,8 +174,9 @@ class TestHairlineDetector:
         expected_keys = {
             "roi_raw", "roi_enhanced", "row_intensities", "gradient",
             "abs_gradient", "max_gradient_idx", "max_gradient_value",
-            "median_gradient", "gradient_ratio", "hairline_y", "method",
-            "roi_coords", "avg_eyebrow_y", "face_rect"
+            "max_gradient_value_full", "median_gradient", "gradient_ratio",
+            "hairline_y", "method", "roi_coords", "avg_eyebrow_y",
+            "face_rect", "searchable_rows"
         }
         assert set(steps.keys()) == expected_keys
 

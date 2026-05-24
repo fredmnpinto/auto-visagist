@@ -206,6 +206,15 @@ def diagnose_image(
     )
     ax1.add_patch(rect)
 
+    # Original face top (dashed cyan line to show expansion)
+    ax1.axhline(
+        y=fy,
+        color="cyan",
+        linestyle="--",
+        linewidth=1.5,
+        label="Original face top",
+    )
+
     # Eyebrow line (red)
     ax1.axhline(
         y=avg_eyebrow_y,
