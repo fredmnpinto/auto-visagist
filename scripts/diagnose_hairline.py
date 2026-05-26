@@ -127,7 +127,7 @@ def diagnose_image(
 
     # 4. Get all intermediate data from HairlineDetector
     hairline_detector = HairlineDetector()
-    steps = hairline_detector.debug_steps(img_gray, landmarks)
+    steps = hairline_detector.detect(img_gray, landmarks)
 
     roi = steps["roi_raw"]
     roi_enhanced = steps["roi_enhanced"]

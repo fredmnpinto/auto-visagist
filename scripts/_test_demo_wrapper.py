@@ -34,7 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from scripts.demo_hairline_steps import main  # noqa: E402
 
 if __name__ == "__main__":
-    with patch.object(sys, "argv", ["demo_hairline_steps.py", "--auto", "--save"]):
+    with patch.object(sys, "argv", ["demo_hairline_steps.py", "--visualize"]):
         main()
 
     print(f"\n[TEST WRAPPER] cv2.imshow called {_imshow_calls.__len__()} times")

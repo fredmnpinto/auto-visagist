@@ -10,7 +10,6 @@ gracefully when the model is not available.
 
 from __future__ import annotations
 
-import warnings
 from pathlib import Path
 from typing import List
 
@@ -89,7 +88,9 @@ class TestHairlineE2E:
 
         # 4. Detect hairline
         hairline_detector = HairlineDetector()
-        hairline_y, method = hairline_detector.detect(img_gray, landmarks)
+        result = hairline_detector.detect(img_gray, landmarks)
+        hairline_y = result["hairline_y"]
+        method = result["method"]
 
         # 5. Assertions
         assert hairline_y is not None
@@ -183,7 +184,10 @@ class TestHairlineE2E:
         hairline_detector = HairlineDetector()
 
         with pytest.warns(UserWarning, match="No strong hairline edge detected"):
-            hairline_y, method = hairline_detector.detect(img_gray, landmarks)
+            result = hairline_detector.detect(img_gray, landmarks)
+
+        hairline_y = result["hairline_y"]
+        method = result["method"]
 
         # Expected fallback: max(avg_eyebrow_y - medium_third, face_rect[1])
         # avg_eyebrow_y = 150, nose_tip_y = 200

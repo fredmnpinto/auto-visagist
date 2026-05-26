@@ -18,7 +18,6 @@ from visagism.constants import (
     HAIRLINE_CLAHE_CLIP,
     HAIRLINE_CLAHE_GRID,
     HAIRLINE_MIN_GRADIENT_RATIO,
-    HAIRLINE_ROI_UPWARD_EXPANSION,
 )
 from visagism.types import FacialLandmarks, ImageArray
 
@@ -67,10 +66,10 @@ class HairlineDetector:
         face_rect = landmarks.face_rect
         fx, fy, fw, fh = face_rect
 
-        # 2. Define search region
+        # 2. Define search region (forehead area within face bounding box)
         x_start = fx
         x_end = fx + fw
-        y_start = max(0, fy - int(fh * HAIRLINE_ROI_UPWARD_EXPANSION))
+        y_start = fy
         y_end = avg_eyebrow_y
 
         # Clamp to image bounds
@@ -88,29 +87,29 @@ class HairlineDetector:
 
         return avg_eyebrow_y, x_start, x_end, y_start, y_end, roi
 
-    def debug_steps(
+    def detect(
         self,
         img_gray: ImageArray,
         landmarks: FacialLandmarks,
     ) -> dict:
-        """Return intermediate step data for visualization.
+        """Estimate hairline y-coordinate using vertical intensity gradient.
 
-        This method runs the same algorithm as :meth:`detect` but returns
-        all intermediate data (ROI, enhanced ROI, intensity profiles,
-        gradient profiles, etc.) so that external code can visualise the
-        pipeline without duplicating the logic.
+        Runs the full detection pipeline and returns all intermediate data
+        alongside the final result so that the algorithm is the single
+        source of truth for both production and debug use.
 
         Parameters
         ----------
         img_gray : ImageArray
             Full grayscale input image.
         landmarks : FacialLandmarks
-            Detected landmarks.
+            Detected landmarks with ``face_rect``, ``landmarks_by_region``,
+            and optionally ``hairline_y``.
 
         Returns
         -------
         dict
-            Dictionary with keys:
+            Dictionary with 16 keys:
             - ``"roi_raw"``: Raw forehead ROI (np.ndarray)
             - ``"roi_enhanced"``: CLAHE-enhanced ROI (np.ndarray)
             - ``"row_intensities"``: Average intensity per row (np.ndarray)
@@ -122,7 +121,7 @@ class HairlineDetector:
             - ``"median_gradient"``: Median absolute gradient (float)
             - ``"gradient_ratio"``: Max / median ratio (float)
             - ``"hairline_y"``: Detected hairline y-coordinate (int)
-            - ``"method"``: Detection method (str, "edge" or "fallback")
+            - ``"method"``: Detection method (str, ``"edge"`` or ``"fallback"``)
             - ``"roi_coords"``: Tuple (x_start, x_end, y_start, y_end)
             - ``"avg_eyebrow_y"``: Average eyebrow y-coordinate (int)
             - ``"face_rect"``: Face bounding box tuple
@@ -135,7 +134,8 @@ class HairlineDetector:
         face_rect = landmarks.face_rect
 
         # Check if search region is valid
-        if y_start >= y_end or (y_end - y_start) < 2 or x_start >= x_end or roi.size == 0:
+        if (y_start >= y_end or (y_end - y_start) < 2
+                or x_start >= x_end or roi.size == 0):
             fallback_y = self._fallback(landmarks, avg_eyebrow_y)
             return {
                 "roi_raw": roi,
@@ -145,6 +145,7 @@ class HairlineDetector:
                 "abs_gradient": np.array([]),
                 "max_gradient_idx": -1,
                 "max_gradient_value": 0.0,
+                "max_gradient_value_full": 0.0,
                 "median_gradient": 0.0,
                 "gradient_ratio": 0.0,
                 "hairline_y": fallback_y,
@@ -152,6 +153,7 @@ class HairlineDetector:
                 "roi_coords": (x_start, x_end, y_start, y_end),
                 "avg_eyebrow_y": avg_eyebrow_y,
                 "face_rect": face_rect,
+                "searchable_rows": 0,
             }
 
         # CLAHE enhancement
@@ -179,6 +181,7 @@ class HairlineDetector:
                 "abs_gradient": np.array([]),
                 "max_gradient_idx": -1,
                 "max_gradient_value": 0.0,
+                "max_gradient_value_full": 0.0,
                 "median_gradient": 0.0,
                 "gradient_ratio": 0.0,
                 "hairline_y": fallback_y,
@@ -186,6 +189,7 @@ class HairlineDetector:
                 "roi_coords": (x_start, x_end, y_start, y_end),
                 "avg_eyebrow_y": avg_eyebrow_y,
                 "face_rect": face_rect,
+                "searchable_rows": searchable_rows,
             }
 
         # Compute signed vertical gradient
@@ -245,92 +249,6 @@ class HairlineDetector:
             "face_rect": face_rect,
             "searchable_rows": searchable_rows,
         }
-
-    def detect(
-        self,
-        img_gray: ImageArray,
-        landmarks: FacialLandmarks,
-    ) -> tuple[int, str]:
-        """Estimate hairline y-coordinate using vertical intensity gradient.
-
-        Parameters
-        ----------
-        img_gray : ImageArray
-            Full grayscale input image.
-        landmarks : FacialLandmarks
-            Detected landmarks with ``face_rect``, ``landmarks_by_region``,
-            and optionally ``hairline_y``.
-
-        Returns
-        -------
-        tuple[int, str]
-            Estimated hairline y-coordinate and detection method
-            (``"edge"`` for gradient-based detection or ``"fallback"``
-            for geometric estimate).
-        """
-        avg_eyebrow_y, x_start, x_end, y_start, y_end, roi = self._compute_roi(
-            img_gray, landmarks
-        )
-
-        # Check if search region is valid
-        if y_start >= y_end or (y_end - y_start) < 2 or x_start >= x_end:
-            fallback_y = self._fallback(landmarks, avg_eyebrow_y)
-            return fallback_y, "fallback"
-
-        if roi.size == 0:
-            fallback_y = self._fallback(landmarks, avg_eyebrow_y)
-            return fallback_y, "fallback"
-
-        # CLAHE enhancement
-        clahe = cv2.createCLAHE(
-            clipLimit=HAIRLINE_CLAHE_CLIP,
-            tileGridSize=HAIRLINE_CLAHE_GRID,
-        )
-        roi_enhanced = clahe.apply(roi)
-
-        # Compute average intensity per row
-        row_intensities = np.mean(roi_enhanced, axis=1)
-
-        # Exclude bottom 25% of ROI to avoid eyebrows
-        roi_h = roi_enhanced.shape[0]
-        exclude_bottom = int(roi_h * 0.25)
-        searchable_rows = roi_h - exclude_bottom
-
-        if searchable_rows < 2:
-            fallback_y = self._fallback(landmarks, avg_eyebrow_y)
-            return fallback_y, "fallback"
-
-        # Compute signed vertical gradient (intensity change between rows)
-        gradient = np.gradient(row_intensities)
-
-        # Only search top 75% of ROI (exclude bottom where eyebrows are)
-        search_gradient = gradient[:searchable_rows]
-        search_intensities = row_intensities[:searchable_rows]
-
-        # Find median of absolute gradient for threshold
-        median_gradient = np.median(np.abs(gradient))
-        if median_gradient == 0:
-            median_gradient = 1e-6  # avoid division by zero
-
-        threshold = median_gradient * HAIRLINE_MIN_GRADIENT_RATIO
-
-        # Search from top down for first strong positive gradient
-        # that also has relatively low intensity (dark hair)
-        mean_intensity = np.mean(row_intensities)
-        hairline_y = None
-        for i in range(len(search_gradient)):
-            if (search_gradient[i] > threshold
-                    and search_intensities[i] < mean_intensity):
-                hairline_y = y_start + i
-                return hairline_y, "edge"
-
-        # Fallback
-        warnings.warn(
-            "Warning: No strong hairline edge detected in searchable region; "
-            "using fallback estimate (superior third = medium third)."
-        )
-        fallback_y = self._fallback(landmarks, avg_eyebrow_y)
-        return fallback_y, "fallback"
 
     def _fallback(
         self,

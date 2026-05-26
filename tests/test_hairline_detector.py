@@ -35,10 +35,10 @@ class TestHairlineDetector:
         )
 
         with pytest.warns(UserWarning, match="No strong hairline edge detected"):
-            hairline_y, method = detector.detect(img_gray, sample_landmarks)
+            result = detector.detect(img_gray, sample_landmarks)
 
-        assert hairline_y == expected_fallback
-        assert method == "fallback"
+        assert result["hairline_y"] == expected_fallback
+        assert result["method"] == "fallback"
 
     def test_detect_fallback_no_edge(self, sample_landmarks: FacialLandmarks) -> None:
         """Test fallback when no strong edge is found in the forehead region."""
@@ -47,11 +47,11 @@ class TestHairlineDetector:
         img_gray[:] = 128  # uniform gray — no edges
 
         with pytest.warns(UserWarning, match="No strong hairline edge detected"):
-            hairline_y, method = detector.detect(img_gray, sample_landmarks)
+            result = detector.detect(img_gray, sample_landmarks)
 
         # Fallback should be clamped to face_rect[1] at minimum
-        assert hairline_y >= sample_landmarks.face_rect[1]
-        assert method == "fallback"
+        assert result["hairline_y"] >= sample_landmarks.face_rect[1]
+        assert result["method"] == "fallback"
 
     def test_detect_fallback_calculation(self) -> None:
         """Test the fallback geometric calculation."""
@@ -88,10 +88,10 @@ class TestHairlineDetector:
         img_gray[:] = 128
 
         with pytest.warns(UserWarning, match="No strong hairline edge detected"):
-            hairline_y, method = detector.detect(img_gray, landmarks)
+            result = detector.detect(img_gray, landmarks)
 
-        assert hairline_y == 100
-        assert method == "fallback"
+        assert result["hairline_y"] == 100
+        assert result["method"] == "fallback"
 
     def test_detect_fallback_clamped(self) -> None:
         """Test that fallback is clamped to face_rect top when calculated above."""
@@ -125,10 +125,10 @@ class TestHairlineDetector:
         img_gray[:] = 128
 
         with pytest.warns(UserWarning, match="No strong hairline edge detected"):
-            hairline_y, method = detector.detect(img_gray, landmarks)
+            result = detector.detect(img_gray, landmarks)
 
-        assert hairline_y == 90
-        assert method == "fallback"
+        assert result["hairline_y"] == 90
+        assert result["method"] == "fallback"
 
     def test_detect_invalid_roi(self) -> None:
         """Test fallback when the search region is invalid."""
@@ -160,16 +160,16 @@ class TestHairlineDetector:
         img_gray[:] = 128
 
         # Invalid ROI (y_start=50, y_end=40) triggers fallback without warning
-        hairline_y, method = detector.detect(img_gray, landmarks)
-        assert hairline_y >= landmarks.face_rect[1]
-        assert method == "fallback"
+        result = detector.detect(img_gray, landmarks)
+        assert result["hairline_y"] >= landmarks.face_rect[1]
+        assert result["method"] == "fallback"
 
-    def test_debug_steps_returns_expected_keys(
+    def test_detect_returns_expected_keys(
         self, sample_landmarks, sample_image_gray
     ):
-        """Test that debug_steps returns all expected keys."""
+        """Test that detect returns all expected keys."""
         detector = HairlineDetector()
-        steps = detector.debug_steps(sample_image_gray, sample_landmarks)
+        steps = detector.detect(sample_image_gray, sample_landmarks)
 
         expected_keys = {
             "roi_raw", "roi_enhanced", "row_intensities", "gradient",
@@ -218,8 +218,104 @@ class TestHairlineDetector:
         img_gray[50:81, 50:250] = 50   # dark region (simulating hair)
         img_gray[81:150, 50:250] = 200  # bright region (simulating skin)
 
-        hairline_y, method = detector.detect(img_gray, landmarks)
+        result = detector.detect(img_gray, landmarks)
 
         # The gradient should be detected near the transition at y=80
-        assert abs(hairline_y - 80) <= 2
-        assert method == "edge"
+        assert abs(result["hairline_y"] - 80) <= 2
+        assert result["method"] == "edge"
+
+    # ------------------------------------------------------------------
+    # Dict key consistency and backward-compatibility (refactoring tests)
+    # ------------------------------------------------------------------
+
+    EXPECTED_KEYS = {
+        "roi_raw", "roi_enhanced", "row_intensities", "gradient",
+        "abs_gradient", "max_gradient_idx", "max_gradient_value",
+        "max_gradient_value_full", "median_gradient", "gradient_ratio",
+        "hairline_y", "method", "roi_coords", "avg_eyebrow_y",
+        "face_rect", "searchable_rows",
+    }
+
+    def test_detect_returns_exactly_16_keys_fallback(self, sample_landmarks) -> None:
+        """Fallback path must return all 16 keys."""
+        detector = HairlineDetector()
+        img_gray = np.full((400, 400), 128, dtype=np.uint8)
+
+        with pytest.warns(UserWarning, match="No strong hairline edge detected"):
+            result = detector.detect(img_gray, sample_landmarks)
+
+        assert set(result.keys()) == self.EXPECTED_KEYS
+        assert len(result) == 16
+
+    def test_detect_returns_exactly_16_keys_invalid_roi(self) -> None:
+        """Invalid ROI path must return all 16 keys."""
+        detector = HairlineDetector()
+        from pathlib import Path
+        from visagism.constants import REGION_INDICES
+
+        landmarks_68 = [(0, 0)] * 68
+        landmarks_68[33] = (150, 200)
+        for idx in REGION_INDICES["left_eyebrow"] + REGION_INDICES["right_eyebrow"]:
+            landmarks_68[idx] = (100, 40)
+
+        landmarks_by_region: LandmarkRegions = {
+            name: [landmarks_68[i] for i in indices]
+            for name, indices in REGION_INDICES.items()
+        }
+        landmarks = FacialLandmarks(
+            image_path=Path("/fake/test.jpg"),
+            face_rect=(50, 50, 200, 250),
+            landmarks_68=landmarks_68,
+            landmarks_by_region=landmarks_by_region,
+        )
+        img_gray = np.full((400, 400), 128, dtype=np.uint8)
+
+        result = detector.detect(img_gray, landmarks)
+        assert set(result.keys()) == self.EXPECTED_KEYS
+        assert len(result) == 16
+
+    def test_detect_returns_exactly_16_keys_edge(self) -> None:
+        """Edge-detection path must return all 16 keys."""
+        detector = HairlineDetector()
+        from pathlib import Path
+        from visagism.constants import REGION_INDICES
+
+        landmarks_68 = [(0, 0)] * 68
+        landmarks_68[33] = (150, 200)
+        for idx in REGION_INDICES["left_eyebrow"] + REGION_INDICES["right_eyebrow"]:
+            landmarks_68[idx] = (100, 150)
+
+        landmarks_by_region: LandmarkRegions = {
+            name: [landmarks_68[i] for i in indices]
+            for name, indices in REGION_INDICES.items()
+        }
+        landmarks = FacialLandmarks(
+            image_path=Path("/fake/test.jpg"),
+            face_rect=(50, 50, 200, 250),
+            landmarks_68=landmarks_68,
+            landmarks_by_region=landmarks_by_region,
+        )
+
+        img_gray = np.zeros((400, 400), dtype=np.uint8)
+        img_gray[:] = 50
+        img_gray[50:81, 50:250] = 50
+        img_gray[81:150, 50:250] = 200
+
+        result = detector.detect(img_gray, landmarks)
+        assert set(result.keys()) == self.EXPECTED_KEYS
+        assert len(result) == 16
+
+    def test_fallback_dict_includes_max_gradient_value_full_and_searchable_rows(
+        self, sample_landmarks
+    ) -> None:
+        """Fallback responses must contain the two keys added during refactoring."""
+        detector = HairlineDetector()
+        img_gray = np.full((400, 400), 128, dtype=np.uint8)
+
+        with pytest.warns(UserWarning, match="No strong hairline edge detected"):
+            result = detector.detect(img_gray, sample_landmarks)
+
+        assert "max_gradient_value_full" in result
+        assert "searchable_rows" in result
+        assert isinstance(result["max_gradient_value_full"], float)
+        assert isinstance(result["searchable_rows"], int)

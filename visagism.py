@@ -70,7 +70,9 @@ def main() -> None:
 
         # Detect hairline (always runs)
         hairline_detector = HairlineDetector()
-        hairline_y, method = hairline_detector.detect(img_gray, landmarks)
+        result = hairline_detector.detect(img_gray, landmarks)
+        hairline_y = result["hairline_y"]
+        method = result["method"]
         landmarks = dataclasses.replace(landmarks, hairline_y=hairline_y)
         print(f"Estimated hairline at y={hairline_y} (method={method})")
 
