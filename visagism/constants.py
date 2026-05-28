@@ -108,24 +108,13 @@ REGION_LABELS: dict[str, str] = {
     "inner_mouth": "Inner Mouth",
 }
 
-# Hairline detection — gradient analysis parameters
-HAIRLINE_MIN_GRADIENT_RATIO: float = 2.0
-
 # Upward expansion of forehead ROI above face bounding box (as fraction of face height)
 HAIRLINE_ROI_UPWARD_EXPANSION: float = 0.25
 
-# Width of forehead ROI as fraction of face width (narrow centered strip)
-HAIRLINE_ROI_WIDTH_RATIO: float = 0.03
-
-# CLAHE preprocessing parameters for forehead ROI enhancement
-HAIRLINE_CLAHE_CLIP: float = 2.0
-HAIRLINE_CLAHE_GRID: tuple[int, int] = (8, 8)
-
-# Legacy Canny edge detection parameters (retained for backward compatibility)
+# Canny edge detection parameters for hairline detection
 HAIRLINE_CANNY_LOW: int = 30
-HAIRLINE_CANNY_HIGH: int = 100
+HAIRLINE_CANNY_HIGH: int = 80
 HAIRLINE_GAUSSIAN_KSIZE: int = 5
-HAIRLINE_MIN_EDGE_SPAN: float = 0.30
 
 # Hairline visualization — dashed line style (BGR color)
 HAIRLINE_COLOR: tuple[int, int, int] = (0, 255, 255)  # Yellow

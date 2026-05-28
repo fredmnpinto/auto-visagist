@@ -1,10 +1,10 @@
-"""Estimate hairline position using vertical intensity gradient analysis.
+"""Estimate hairline position using Canny edge detection.
 
-Uses CLAHE contrast enhancement and vertical intensity gradient scanning
-above the eyebrows to locate the hairline.  The algorithm looks for the
-steepest intensity change (bright skin → dark hair) in the forehead ROI.
-Falls back to a geometric estimate based on the
-superior-third = medium-third heuristic.
+Applies Gaussian blur and Canny edge detection to a forehead context
+region, then scans a narrow 1-pixel-wide center column for the first
+strong edge from bottom to top.  Falls back to a geometric estimate
+based on the superior-third = medium-third heuristic when no edge is
+found.
 """
 
 from __future__ import annotations
@@ -15,36 +15,36 @@ import cv2
 import numpy as np
 
 from visagism.constants import (
-    HAIRLINE_CLAHE_CLIP,
-    HAIRLINE_CLAHE_GRID,
-    HAIRLINE_MIN_GRADIENT_RATIO,
+    HAIRLINE_CANNY_HIGH,
+    HAIRLINE_CANNY_LOW,
+    HAIRLINE_GAUSSIAN_KSIZE,
     HAIRLINE_ROI_UPWARD_EXPANSION,
-    HAIRLINE_ROI_WIDTH_RATIO,
 )
 from visagism.types import FacialLandmarks, ImageArray
 
 
 class HairlineDetector:
-    """Estimates the hairline y-coordinate using vertical intensity gradient.
+    """Estimates the hairline y-coordinate using Canny edge detection.
 
     The detection works by:
 
     1. Computing the average eyebrow y-coordinate from brow landmarks.
-    2. Defining a search region between the top of the face bounding box
-       and the eyebrow line.
-    3. Applying CLAHE contrast enhancement on the forehead ROI.
-    4. Computing the average intensity per row and its vertical gradient.
-    5. Finding the row with the steepest intensity change.
-    6. Validating that the gradient is significantly above the median.
-    7. Falling back to a geometric estimate if no strong gradient is found.
+    2. Defining a 1-pixel-wide search strip centred on the face midline,
+       spanning from above the face top to just above the eyebrow line
+       (excluding the bottom 25 % of the forehead).
+    3. Extracting a wider forehead context (full face width) for Canny.
+    4. Applying Gaussian blur and Canny edge detection to the context.
+    5. Sampling the centre column of the resulting edge map.
+    6. Scanning bottom-to-top for the first edge pixel.
+    7. Falling back to a geometric estimate if no edge is found.
     """
 
     def _compute_roi(
         self,
         img_gray: ImageArray,
         landmarks: FacialLandmarks,
-    ) -> tuple[int, int, int, int, int, np.ndarray]:
-        """Compute forehead ROI coordinates and extract the ROI.
+    ) -> tuple[int, int, int, int, int, np.ndarray, np.ndarray]:
+        """Compute forehead ROI and Canny context coordinates and extract regions.
 
         Parameters
         ----------
@@ -56,8 +56,9 @@ class HairlineDetector:
         Returns
         -------
         tuple
-            ``(avg_eyebrow_y, x_start, x_end, y_start, y_end, roi)`` where
-            *roi* is the extracted grayscale forehead region.
+            ``(avg_eyebrow_y, x_start, x_end, y_start, y_end, roi, context)``
+            where *roi* is the 1-pixel-wide centred strip and *context* is
+            the wider forehead region used for Canny edge detection.
         """
         # 1. Compute average eyebrow y
         left_brow = landmarks.landmarks_by_region["left_eyebrow"]
@@ -68,14 +69,16 @@ class HairlineDetector:
         face_rect = landmarks.face_rect
         fx, fy, fw, fh = face_rect
 
-        # 2. Define search region (narrow centered strip above eyebrows)
-        face_center_x = fx + fw // 2
-        roi_width = max(1, int(fw * HAIRLINE_ROI_WIDTH_RATIO))
-        x_start = face_center_x - roi_width // 2
-        x_end = x_start + roi_width
+        # 2. Define y-bounds for the search region
         upward_shift = int(fh * HAIRLINE_ROI_UPWARD_EXPANSION)
         y_start = fy - upward_shift
-        y_end = avg_eyebrow_y
+        forehead_height = avg_eyebrow_y - fy
+        y_end = avg_eyebrow_y - int(forehead_height * 0.25)
+
+        # 3. Define 1-pixel-wide ROI centred on face midline
+        face_center_x = fx + fw // 2
+        x_start = face_center_x
+        x_end = face_center_x + 1
 
         # Clamp to image bounds
         img_h, img_w = img_gray.shape[:2]
@@ -84,20 +87,39 @@ class HairlineDetector:
         y_start = max(0, min(y_start, img_h - 1))
         y_end = max(0, min(y_end, img_h))
 
-        # 3. Extract forehead ROI
+        # 4. Extract 1-pixel ROI
         if y_start >= y_end or x_start >= x_end:
             roi = np.array([])
         else:
             roi = img_gray[y_start:y_end, x_start:x_end]
 
-        return avg_eyebrow_y, x_start, x_end, y_start, y_end, roi
+        # 5. Extract wider Canny context (full face width, same y-bounds)
+        ctx_x_start = max(0, fx)
+        ctx_x_end = min(fx + fw, img_w)
+        ctx_y_start = y_start
+        ctx_y_end = y_end
+
+        if ctx_y_start >= ctx_y_end or ctx_x_start >= ctx_x_end:
+            context = np.array([])
+        else:
+            context = img_gray[ctx_y_start:ctx_y_end, ctx_x_start:ctx_x_end]
+
+        return (
+            avg_eyebrow_y,
+            x_start,
+            x_end,
+            y_start,
+            y_end,
+            roi,
+            context,
+        )
 
     def detect(
         self,
         img_gray: ImageArray,
         landmarks: FacialLandmarks,
     ) -> dict:
-        """Estimate hairline y-coordinate using vertical intensity gradient.
+        """Estimate hairline y-coordinate using Canny edge detection.
 
         Runs the full detection pipeline and returns all intermediate data
         alongside the final result so that the algorithm is the single
@@ -115,113 +137,106 @@ class HairlineDetector:
         -------
         dict
             Dictionary with 16 keys:
-            - ``"roi_raw"``: Raw forehead ROI (np.ndarray)
-            - ``"roi_enhanced"``: CLAHE-enhanced ROI (np.ndarray)
-            - ``"row_intensities"``: Average intensity per row (np.ndarray)
-            - ``"gradient"``: Signed gradient per row (np.ndarray)
-            - ``"abs_gradient"``: Absolute gradient per row (np.ndarray)
-            - ``"max_gradient_idx"``: Index of max gradient (int)
-            - ``"max_gradient_value"``: Value of max gradient (float)
-            - ``"max_gradient_value_full"``: Max over full gradient array (float)
-            - ``"median_gradient"``: Median absolute gradient (float)
-            - ``"gradient_ratio"``: Max / median ratio (float)
             - ``"hairline_y"``: Detected hairline y-coordinate (int)
-            - ``"method"``: Detection method (str, ``"edge"`` or ``"fallback"``)
+            - ``"method"``: Detection method (str, ``"canny"`` or ``"fallback"``)
             - ``"roi_coords"``: Tuple (x_start, x_end, y_start, y_end)
+            - ``"roi_raw"``: Raw 1-pixel forehead ROI (np.ndarray)
+            - ``"canny_context_coords"``: Tuple (ctx_x_start, ctx_x_end,
+              ctx_y_start, ctx_y_end)
+            - ``"canny_context_raw"``: Raw Canny context (np.ndarray)
+            - ``"canny_edge_map"``: Canny edge map (np.ndarray)
+            - ``"center_column"``: Sampled centre column from edge map
+              (np.ndarray)
+            - ``"first_edge_idx"``: Index of first edge pixel in centre
+              column when scanning bottom-to-top (int, -1 if none)
+            - ``"edge_pixels_count"``: Total edge pixels in centre column
+              (int)
+            - ``"gaussian_ksize"``: Gaussian kernel size used (int)
+            - ``"canny_low"``: Canny low threshold (int)
+            - ``"canny_high"``: Canny high threshold (int)
             - ``"avg_eyebrow_y"``: Average eyebrow y-coordinate (int)
             - ``"face_rect"``: Face bounding box tuple
-            - ``"searchable_rows"``: Number of rows in the searchable region (int)
+            - ``"searchable_rows"``: Number of rows scanned (int)
         """
-        avg_eyebrow_y, x_start, x_end, y_start, y_end, roi = self._compute_roi(
-            img_gray, landmarks
-        )
+        (
+            avg_eyebrow_y,
+            x_start,
+            x_end,
+            y_start,
+            y_end,
+            roi,
+            context,
+        ) = self._compute_roi(img_gray, landmarks)
 
         face_rect = landmarks.face_rect
+        fx, fy, fw, fh = face_rect
+
+        # Canny context coordinates
+        ctx_x_start = max(0, fx)
+        ctx_x_end = min(fx + fw, img_gray.shape[1])
+        ctx_y_start = y_start
+        ctx_y_end = y_end
 
         # Check if search region is valid
-        if (y_start >= y_end or (y_end - y_start) < 2
-                or x_start >= x_end or roi.size == 0):
+        searchable_rows = y_end - y_start if y_end > y_start else 0
+        if (
+            y_start >= y_end
+            or searchable_rows < 2
+            or x_start >= x_end
+            or roi.size == 0
+            or context.size == 0
+        ):
             fallback_y = self._fallback(landmarks, avg_eyebrow_y)
             return {
-                "roi_raw": roi,
-                "roi_enhanced": np.array([]),
-                "row_intensities": np.array([]),
-                "gradient": np.array([]),
-                "abs_gradient": np.array([]),
-                "max_gradient_idx": -1,
-                "max_gradient_value": 0.0,
-                "max_gradient_value_full": 0.0,
-                "median_gradient": 0.0,
-                "gradient_ratio": 0.0,
                 "hairline_y": fallback_y,
                 "method": "fallback",
                 "roi_coords": (x_start, x_end, y_start, y_end),
-                "avg_eyebrow_y": avg_eyebrow_y,
-                "face_rect": face_rect,
-                "searchable_rows": 0,
-            }
-
-        # CLAHE enhancement
-        clahe = cv2.createCLAHE(
-            clipLimit=HAIRLINE_CLAHE_CLIP,
-            tileGridSize=HAIRLINE_CLAHE_GRID,
-        )
-        roi_enhanced = clahe.apply(roi)
-
-        # Compute average intensity per row
-        row_intensities = np.mean(roi_enhanced, axis=1)
-
-        # Exclude bottom 25% of ROI to avoid eyebrows
-        roi_h = roi_enhanced.shape[0]
-        exclude_bottom = int(roi_h * 0.25)
-        searchable_rows = roi_h - exclude_bottom
-
-        if searchable_rows < 2:
-            fallback_y = self._fallback(landmarks, avg_eyebrow_y)
-            return {
                 "roi_raw": roi,
-                "roi_enhanced": roi_enhanced,
-                "row_intensities": row_intensities,
-                "gradient": np.array([]),
-                "abs_gradient": np.array([]),
-                "max_gradient_idx": -1,
-                "max_gradient_value": 0.0,
-                "max_gradient_value_full": 0.0,
-                "median_gradient": 0.0,
-                "gradient_ratio": 0.0,
-                "hairline_y": fallback_y,
-                "method": "fallback",
-                "roi_coords": (x_start, x_end, y_start, y_end),
+                "canny_context_coords": (
+                    ctx_x_start,
+                    ctx_x_end,
+                    ctx_y_start,
+                    ctx_y_end,
+                ),
+                "canny_context_raw": context,
+                "canny_edge_map": np.array([]),
+                "center_column": np.array([]),
+                "first_edge_idx": -1,
+                "edge_pixels_count": 0,
+                "gaussian_ksize": HAIRLINE_GAUSSIAN_KSIZE,
+                "canny_low": HAIRLINE_CANNY_LOW,
+                "canny_high": HAIRLINE_CANNY_HIGH,
                 "avg_eyebrow_y": avg_eyebrow_y,
                 "face_rect": face_rect,
                 "searchable_rows": searchable_rows,
             }
 
-        # Compute signed vertical gradient
-        gradient = np.gradient(row_intensities)
+        # Gaussian blur
+        ksize = HAIRLINE_GAUSSIAN_KSIZE
+        if ksize % 2 == 0:
+            ksize += 1
+        blurred = cv2.GaussianBlur(context, (ksize, ksize), 0)
 
-        # Only search top 75% of ROI
-        search_gradient = gradient[:searchable_rows]
-        search_intensities = row_intensities[:searchable_rows]
+        # Canny edge detection
+        edges = cv2.Canny(blurred, HAIRLINE_CANNY_LOW, HAIRLINE_CANNY_HIGH)
 
-        # Find median of absolute gradient for threshold
-        abs_gradient = np.abs(gradient)
-        search_abs_gradient = np.abs(search_gradient)
-        median_gradient = float(np.median(abs_gradient))
-        if median_gradient == 0:
-            median_gradient = 1e-6
+        # Sample centre column from edge map
+        face_center_x = fx + fw // 2
+        center_col_idx = face_center_x - ctx_x_start
+        center_col_idx = max(0, min(center_col_idx, edges.shape[1] - 1))
+        center_column = edges[:, center_col_idx]
 
-        threshold = median_gradient * HAIRLINE_MIN_GRADIENT_RATIO
-
-        # Search from top down for first strong positive gradient
-        mean_intensity = float(np.mean(row_intensities))
+        # Scan bottom-to-top for first edge pixel
         hairline_y = None
         method = "fallback"
-        for i in range(len(search_gradient)):
-            if (search_gradient[i] > threshold
-                    and search_intensities[i] < mean_intensity):
+        first_edge_idx = -1
+        edge_pixels_count = int(np.count_nonzero(center_column == 255))
+
+        for i in reversed(range(searchable_rows)):
+            if center_column[i] == 255:
                 hairline_y = y_start + i
-                method = "edge"
+                method = "canny"
+                first_edge_idx = i
                 break
 
         if hairline_y is None:
@@ -231,25 +246,25 @@ class HairlineDetector:
             )
             hairline_y = self._fallback(landmarks, avg_eyebrow_y)
 
-        max_gradient_idx = int(np.argmax(search_abs_gradient))
-        max_gradient_value = float(search_abs_gradient[max_gradient_idx])
-        max_gradient_value_full = float(np.max(abs_gradient))
-        gradient_ratio = max_gradient_value / median_gradient
-
         return {
-            "roi_raw": roi,
-            "roi_enhanced": roi_enhanced,
-            "row_intensities": row_intensities,
-            "gradient": gradient,
-            "abs_gradient": abs_gradient,
-            "max_gradient_idx": max_gradient_idx,
-            "max_gradient_value": max_gradient_value,
-            "max_gradient_value_full": max_gradient_value_full,
-            "median_gradient": median_gradient,
-            "gradient_ratio": gradient_ratio,
             "hairline_y": hairline_y,
             "method": method,
             "roi_coords": (x_start, x_end, y_start, y_end),
+            "roi_raw": roi,
+            "canny_context_coords": (
+                ctx_x_start,
+                ctx_x_end,
+                ctx_y_start,
+                ctx_y_end,
+            ),
+            "canny_context_raw": context,
+            "canny_edge_map": edges,
+            "center_column": center_column,
+            "first_edge_idx": first_edge_idx,
+            "edge_pixels_count": edge_pixels_count,
+            "gaussian_ksize": ksize,
+            "canny_low": HAIRLINE_CANNY_LOW,
+            "canny_high": HAIRLINE_CANNY_HIGH,
             "avg_eyebrow_y": avg_eyebrow_y,
             "face_rect": face_rect,
             "searchable_rows": searchable_rows,

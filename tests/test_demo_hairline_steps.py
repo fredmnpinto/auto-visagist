@@ -40,31 +40,30 @@ def fake_image_path(tmp_path: Path) -> Path:
 @pytest.fixture
 def fake_steps() -> dict:
     """Return a realistic steps dict as produced by HairlineDetector."""
-    roi = np.random.randint(0, 255, (50, 6), dtype=np.uint8)
-    roi_enhanced = np.random.randint(0, 255, (50, 6), dtype=np.uint8)
-    row_intensities = np.mean(roi_enhanced, axis=1)
-    gradient = np.gradient(row_intensities)
-    abs_gradient = np.abs(gradient)
-    max_gradient_idx = int(np.argmax(abs_gradient))
-    max_gradient_value = float(abs_gradient[max_gradient_idx])
-    median_gradient = float(np.median(abs_gradient)) or 1e-6
+    roi = np.random.randint(0, 255, (50, 1), dtype=np.uint8)
+    context = np.random.randint(0, 255, (50, 100), dtype=np.uint8)
+    edges = np.zeros((50, 100), dtype=np.uint8)
+    edges[20, 50] = 255  # one edge pixel
+    center_column = edges[:, 50]
+    first_edge_idx = 20
+    edge_pixels_count = 1
     return {
-        "roi_raw": roi,
-        "roi_enhanced": roi_enhanced,
-        "row_intensities": row_intensities,
-        "gradient": gradient,
-        "abs_gradient": abs_gradient,
-        "max_gradient_idx": max_gradient_idx,
-        "max_gradient_value": max_gradient_value,
-        "max_gradient_value_full": max_gradient_value,
-        "median_gradient": median_gradient,
-        "gradient_ratio": max_gradient_value / median_gradient,
         "hairline_y": 80,
-        "method": "edge",
-        "roi_coords": (97, 103, 30, 80),
+        "method": "canny",
+        "roi_coords": (97, 98, 30, 80),
+        "roi_raw": roi,
+        "canny_context_coords": (50, 150, 30, 80),
+        "canny_context_raw": context,
+        "canny_edge_map": edges,
+        "center_column": center_column,
+        "first_edge_idx": first_edge_idx,
+        "edge_pixels_count": edge_pixels_count,
+        "gaussian_ksize": 5,
+        "canny_low": 30,
+        "canny_high": 100,
         "avg_eyebrow_y": 80,
         "face_rect": (50, 50, 100, 120),
-        "searchable_rows": 37,
+        "searchable_rows": 50,
     }
 
 
@@ -72,19 +71,19 @@ def fake_steps() -> dict:
 def fake_steps_empty_roi() -> dict:
     """Return a steps dict with an empty/invalid ROI."""
     return {
-        "roi_raw": np.array([]),
-        "roi_enhanced": np.array([]),
-        "row_intensities": np.array([]),
-        "gradient": np.array([]),
-        "abs_gradient": np.array([]),
-        "max_gradient_idx": -1,
-        "max_gradient_value": 0.0,
-        "max_gradient_value_full": 0.0,
-        "median_gradient": 0.0,
-        "gradient_ratio": 0.0,
         "hairline_y": 50,
         "method": "fallback",
-        "roi_coords": (97, 103, 80, 80),  # y_start == y_end -> empty
+        "roi_coords": (97, 98, 80, 80),  # y_start == y_end -> empty
+        "roi_raw": np.array([]),
+        "canny_context_coords": (50, 150, 80, 80),
+        "canny_context_raw": np.array([]),
+        "canny_edge_map": np.array([]),
+        "center_column": np.array([]),
+        "first_edge_idx": -1,
+        "edge_pixels_count": 0,
+        "gaussian_ksize": 5,
+        "canny_low": 30,
+        "canny_high": 100,
         "avg_eyebrow_y": 80,
         "face_rect": (50, 50, 100, 120),
         "searchable_rows": 0,
@@ -216,7 +215,7 @@ class TestBuildSummaryText:
         text = demo._build_summary_text(image_path, face_rect, fake_steps)
         assert "photo.jpg" in text
         assert "Face size: 100x120 px" in text
-        assert "edge detection at y=80" in text
+        assert "canny detection at y=80" in text
 
 
 # ---------------------------------------------------------------------------
@@ -229,9 +228,9 @@ class TestProcessImageSaves:
     EXPECTED_FILES = [
         "step01_face_and_roi.png",
         "step02_forehead_roi.png",
-        "step03_clahe_enhanced.png",
-        "step04_intensity_graph.png",
-        "step05_gradient_graph.png",
+        "step03_canny_context.png",
+        "step04_canny_edge_map.png",
+        "step05_center_column_scan.png",
         "step06_final_result.png",
         "data.json",
         "profiles.csv",
@@ -299,7 +298,7 @@ class TestProcessImageSaves:
             summary_path = Path("output") / fake_image_path.stem / "summary.txt"
             content = summary_path.read_text(encoding="utf-8")
             assert "fake_face.jpg" in content
-            assert "edge detection at y=80" in content
+            assert "canny detection at y=80" in content
         finally:
             os.chdir(original_cwd)
 
@@ -316,9 +315,11 @@ class TestProcessImageSaves:
             data_path = Path("output") / fake_image_path.stem / "data.json"
             data = json.loads(data_path.read_text(encoding="utf-8"))
             assert data["hairline_y"] == 80
-            assert data["method"] == "edge"
-            assert isinstance(data["row_intensities"], list)
+            assert data["method"] == "canny"
+            assert isinstance(data["center_column"], list)
             assert isinstance(data["roi_coords"], list)
+            assert "canny_edge_map" in data
+            assert "first_edge_idx" in data
         finally:
             os.chdir(original_cwd)
 
@@ -336,7 +337,7 @@ class TestProcessImageSaves:
             with open(csv_path, newline="", encoding="utf-8") as f:
                 reader = csv.reader(f)
                 rows = list(reader)
-            assert rows[0] == ["row_index", "intensity", "gradient", "abs_gradient"]
+            assert rows[0] == ["row_index", "center_column_value"]
             assert len(rows) == 51  # header + 50 data rows
         finally:
             os.chdir(original_cwd)
@@ -376,7 +377,7 @@ class TestProcessImageEmptyRoi:
             data = json.loads(data_path.read_text(encoding="utf-8"))
             assert data["hairline_y"] == 50
             assert data["method"] == "fallback"
-            assert data["row_intensities"] == []
+            assert data["center_column"] == []
         finally:
             os.chdir(original_cwd)
 
@@ -395,7 +396,7 @@ class TestProcessImageEmptyRoi:
             with open(csv_path, newline="", encoding="utf-8") as f:
                 rows = list(csv.reader(f))
             assert len(rows) == 1
-            assert rows[0] == ["row_index", "intensity", "gradient", "abs_gradient"]
+            assert rows[0] == ["row_index", "center_column_value"]
         finally:
             os.chdir(original_cwd)
 

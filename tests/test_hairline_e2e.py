@@ -66,7 +66,7 @@ class TestHairlineE2E:
 
         The resulting ``hairline_y`` must be a valid integer within the
         image bounds and positioned above the eyebrows.  The detection
-        method must be ``"edge"`` (gradient-based), proving the new
+        method must be ``"canny"``, proving the Canny edge detection
         algorithm works on real photographs.
 
         Parameters
@@ -108,9 +108,9 @@ class TestHairlineE2E:
             f"hairline_y={hairline_y} should be above avg_eyebrow_y={avg_eyebrow_y}"
         )
 
-        # The gradient method must succeed on real images
-        assert method == "edge", (
-            f"Expected edge detection but got {method} for {image_path.name}"
+        # The Canny method must succeed on real images
+        assert method == "canny", (
+            f"Expected canny detection but got {method} for {image_path.name}"
         )
 
         # Compute fallback estimate manually
@@ -142,8 +142,8 @@ class TestHairlineE2E:
 
         A synthetic ``FacialLandmarks`` object is created with realistic
         landmark positions and a uniform grey image (no edges) is used.
-        Because there are no strong intensity gradients, the detector must
-        return the fallback estimate.
+        Because there are no strong edges, the detector must return the
+        fallback estimate.
 
         This test always runs and does not require the dlib model.
         """
@@ -178,7 +178,7 @@ class TestHairlineE2E:
             landmarks_by_region=landmarks_by_region,
         )
 
-        # Uniform grey image — no strong gradients
+        # Uniform grey image — no edges
         img_gray = np.full((400, 400), 128, dtype=np.uint8)
 
         hairline_detector = HairlineDetector()

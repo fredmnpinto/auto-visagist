@@ -43,26 +43,31 @@ def _show_step(window_name: str, image: np.ndarray) -> None:
     cv2.destroyWindow(window_name)
 
 
-def _draw_graph(
-    values: np.ndarray, title: str, y_max: float | None = None,
-    highlight_idx: int | None = None,
+def _draw_bar_chart(
+    values: np.ndarray, title: str, highlight_idx: int | None = None,
 ) -> np.ndarray:
-    """Draw a static line graph on a 600x300 dark gray canvas."""
+    """Draw a bar chart on a 600x300 dark gray canvas."""
     canvas = np.full((300, 600, 3), 40, dtype=np.uint8)
-    cv2.line(canvas, (50, 250), (580, 250), (180, 180, 180), 1)
-    cv2.line(canvas, (50, 20), (50, 250), (180, 180, 180), 1)
     n = len(values)
     if n == 0:
+        cv2.putText(canvas, title, (50, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                    (255, 255, 255), 1)
         return canvas
-    vmax = y_max if y_max is not None else float(np.max(values))
-    vmax = vmax or 1.0
-    points = [(50 + int((i / (n - 1)) * 530) if n > 1 else 315,
-               250 - int((val / vmax) * 220)) for i, val in enumerate(values)]
-    for i in range(len(points) - 1):
-        cv2.line(canvas, points[i], points[i + 1], (0, 200, 255), 2)
-    if highlight_idx is not None and 0 <= highlight_idx < n:
-        hx = points[highlight_idx][0]
-        cv2.line(canvas, (hx, 20), (hx, 250), (0, 0, 255), 2)
+
+    bar_width = max(1, 530 // n)
+    max_val = float(np.max(values)) if np.max(values) > 0 else 1.0
+    x_offset = 50
+
+    for i, val in enumerate(values):
+        h = int((val / max_val) * 220)
+        x = x_offset + i * bar_width
+        color = (0, 200, 255)
+        if highlight_idx is not None and i == highlight_idx:
+            color = (0, 0, 255)
+        cv2.rectangle(canvas, (x, 250 - h), (x + bar_width - 1, 250), color, -1)
+
+    cv2.line(canvas, (50, 250), (580, 250), (180, 180, 180), 1)
+    cv2.line(canvas, (50, 20), (50, 250), (180, 180, 180), 1)
     cv2.putText(canvas, title, (50, 15), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
                 (255, 255, 255), 1)
     return canvas
@@ -71,8 +76,9 @@ def _draw_graph(
 def _create_step1_image(
     img_bgr: ImageArray, landmarks: FacialLandmarks,
     xs: int, xe: int, ys: int, ye: int,
+    ctx_xs: int, ctx_xe: int,
 ) -> np.ndarray:
-    """Create Step 1 image: original with face box, eyebrow line, and ROI."""
+    """Create Step 1 image: original with face box, eyebrow line, ROI, and context."""
     img = img_bgr.copy()
     fx, fy, fw, fh = landmarks.face_rect
     cv2.rectangle(img, (fx, fy), (fx + fw, fy + fh), (0, 255, 0), 2)
@@ -81,31 +87,37 @@ def _create_step1_image(
     avg_y = int(np.mean([pt[1] for pt in brows]))
     cv2.line(img, (xs, avg_y), (xe, avg_y), (0, 0, 255), 2)
 
+    # Context rectangle (cyan, semi-transparent)
     overlay = img.copy()
-    cv2.rectangle(overlay, (xs, ys), (xe, ye), (255, 200, 100), -1)
-    cv2.addWeighted(overlay, 0.3, img, 0.7, 0, img)
-    cv2.rectangle(img, (xs, ys), (xe, ye), (255, 255, 0), 2)
+    cv2.rectangle(overlay, (ctx_xs, ys), (ctx_xe, ye), (255, 255, 0), -1)
+    cv2.addWeighted(overlay, 0.15, img, 0.85, 0, img)
+    cv2.rectangle(img, (ctx_xs, ys), (ctx_xe, ye), (255, 255, 0), 2)
+
+    # 1-pixel ROI strip (magenta, thick for visibility)
+    cv2.line(img, (xs, ys), (xs, ye), (255, 0, 255), 3)
 
     cv2.putText(img, "Face box", (fx + fw + 10, fy + 20),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-    cv2.putText(img, "Forehead ROI", (xs + 10, ys + 30),
+    cv2.putText(img, "Canny context", (ctx_xe + 10, ys + 30),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+    cv2.putText(img, "1px ROI", (xs + 10, ys + 50),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 255), 2)
     return img
 
 
 def _create_step6_image(
     img_bgr: ImageArray, landmarks: FacialLandmarks,
-    hairline_y: int, method: str, ratio: float,
+    hairline_y: int, method: str, edge_count: int,
 ) -> np.ndarray:
     """Create Step 6 image: final result with dashed hairline and text."""
     img = img_bgr.copy()
     h, w = img.shape[:2]
     fx, fy, fw, fh = landmarks.face_rect
     cv2.rectangle(img, (fx, fy), (fx + fw, fy + fh), (0, 255, 0), 2)
-    color = (0, 255, 255) if method == "edge" else (0, 165, 255)
+    color = (0, 255, 255) if method == "canny" else (0, 165, 255)
     for x in range(0, w, 40):
         cv2.line(img, (x, hairline_y), (min(x + 20, w), hairline_y), color, 3)
-    text = f"Hairline: Y={hairline_y} ({method}) | Ratio={ratio:.2f}"
+    text = f"Hairline: Y={hairline_y} ({method}) | Edges={edge_count}"
     (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
     cv2.rectangle(img, (5, h - th - 15), (tw + 15, h - 5), (0, 0, 0), -1)
     cv2.putText(img, text, (10, h - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.7,
@@ -153,73 +165,95 @@ def _build_step_images(
         List of 6 BGR images, one per step.
     """
     x_start, x_end, y_start, y_end = steps["roi_coords"]
+    ctx_xs, ctx_xe, ctx_ys, ctx_ye = steps["canny_context_coords"]
     roi = steps["roi_raw"]
-    roi_enhanced = steps["roi_enhanced"]
-    row_intensities = steps["row_intensities"]
-    abs_gradient = steps["abs_gradient"]
+    context = steps["canny_context_raw"]
+    edges = steps["canny_edge_map"]
+    center_column = steps["center_column"]
     hairline_y = steps["hairline_y"]
     method = steps["method"]
-    gradient_ratio = steps["gradient_ratio"]
+    edge_count = steps["edge_pixels_count"]
+    first_edge_idx = steps["first_edge_idx"]
 
     step_images: list[np.ndarray] = []
 
     # Step 1: Face and ROI
     step_images.append(
-        _create_step1_image(img_bgr, landmarks, x_start, x_end, y_start, y_end)
+        _create_step1_image(
+            img_bgr, landmarks, x_start, x_end, y_start, y_end,
+            ctx_xs, ctx_xe,
+        )
     )
 
-    # Step 2: Forehead ROI
+    # Step 2: Forehead ROI (1-pixel strip, scaled for visibility)
     if roi.size > 0 and roi.ndim == 2:
+        # Scale the 1-pixel strip horizontally for visibility
         roi_bgr = cv2.cvtColor(roi, cv2.COLOR_GRAY2BGR)
+        roi_bgr = cv2.resize(
+            roi_bgr, (200, roi_bgr.shape[0]), interpolation=cv2.INTER_NEAREST
+        )
     elif roi.size > 0:
         roi_bgr = roi.copy()
     else:
-        roi_bgr = np.full((100, 100, 3), 40, dtype=np.uint8)
+        roi_bgr = np.full((100, 200, 3), 40, dtype=np.uint8)
         cv2.putText(
             roi_bgr, "Empty ROI", (10, 50),
             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1,
         )
     h_roi, w_roi = roi_bgr.shape[:2]
-    cv2.putText(roi_bgr, f"{w_roi}x{h_roi} px", (10, h_roi - 15),
+    cv2.putText(roi_bgr, f"{w_roi}x{h_roi} px (scaled)", (10, h_roi - 15),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
     step_images.append(roi_bgr)
 
-    # Step 3: CLAHE enhanced
-    if roi_enhanced.size > 0 and roi_enhanced.ndim == 2:
-        clahe_bgr = cv2.cvtColor(roi_enhanced, cv2.COLOR_GRAY2BGR)
-    elif roi_enhanced.size > 0:
-        clahe_bgr = roi_enhanced.copy()
+    # Step 3: Canny context
+    if context.size > 0 and context.ndim == 2:
+        context_bgr = cv2.cvtColor(context, cv2.COLOR_GRAY2BGR)
+    elif context.size > 0:
+        context_bgr = context.copy()
     else:
-        clahe_bgr = np.full((100, 100, 3), 40, dtype=np.uint8)
+        context_bgr = np.full((100, 100, 3), 40, dtype=np.uint8)
         cv2.putText(
-            clahe_bgr, "Empty ROI", (10, 50),
+            context_bgr, "Empty context", (10, 50),
             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1,
         )
-    step_images.append(clahe_bgr)
+    step_images.append(context_bgr)
 
-    # Step 4: Intensity graph
-    searchable_rows = steps.get("searchable_rows", 0)
-    if len(row_intensities) > 0 and searchable_rows > 0:
-        min_idx = int(np.argmin(row_intensities[:searchable_rows]))
+    # Step 4: Canny edge map
+    if edges.size > 0 and edges.ndim == 2:
+        edges_bgr = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
+        # Highlight center column in red
+        face_center_x = landmarks.face_rect[0] + landmarks.face_rect[2] // 2
+        center_col_idx = face_center_x - ctx_xs
+        if 0 <= center_col_idx < edges_bgr.shape[1]:
+            edges_bgr[:, center_col_idx] = (0, 0, 255)
     else:
-        min_idx = None
-    step_images.append(
-        _draw_graph(row_intensities, "Average intensity per row", 255.0, min_idx)
-    )
-
-    # Step 5: Gradient graph
-    step_images.append(
-        _draw_graph(
-            abs_gradient,
-            "Vertical gradient magnitude",
-            steps["max_gradient_value_full"] if steps["max_gradient_value_full"] > 0 else None,  # noqa: E501
-            steps["max_gradient_idx"] if steps["max_gradient_idx"] >= 0 else None,
+        edges_bgr = np.full((100, 100, 3), 40, dtype=np.uint8)
+        cv2.putText(
+            edges_bgr, "Empty edge map", (10, 50),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1,
         )
-    )
+    step_images.append(edges_bgr)
+
+    # Step 5: Center column scan
+    if len(center_column) > 0:
+        step_images.append(
+                _draw_bar_chart(
+                center_column.astype(np.float32),
+                "Center column scan (bottom-to-up, 0=dark, 255=edge)",
+                highlight_idx=first_edge_idx if first_edge_idx >= 0 else None,
+            )
+        )
+    else:
+        empty_chart = np.full((300, 600, 3), 40, dtype=np.uint8)
+        cv2.putText(
+            empty_chart, "No center column data", (50, 150),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 1,
+        )
+        step_images.append(empty_chart)
 
     # Step 6: Final result
     step_images.append(
-        _create_step6_image(img_bgr, landmarks, hairline_y, method, gradient_ratio)
+        _create_step6_image(img_bgr, landmarks, hairline_y, method, edge_count)
     )
 
     return step_images
@@ -238,9 +272,9 @@ def _save_step_images(output_dir: Path, step_images: list[np.ndarray]) -> None:
     names = [
         "step01_face_and_roi.png",
         "step02_forehead_roi.png",
-        "step03_clahe_enhanced.png",
-        "step04_intensity_graph.png",
-        "step05_gradient_graph.png",
+        "step03_canny_context.png",
+        "step04_canny_edge_map.png",
+        "step05_center_column_scan.png",
         "step06_final_result.png",
     ]
     for name, img in zip(names, step_images):
@@ -288,15 +322,17 @@ def _save_data_json(output_dir: Path, steps: dict) -> None:
     keys_to_save = [
         "roi_coords",
         "hairline_y",
-        "gradient",
-        "row_intensities",
-        "abs_gradient",
-        "max_gradient_idx",
-        "max_gradient_value",
-        "max_gradient_value_full",
-        "median_gradient",
-        "gradient_ratio",
         "method",
+        "roi_raw",
+        "canny_context_coords",
+        "canny_context_raw",
+        "canny_edge_map",
+        "center_column",
+        "first_edge_idx",
+        "edge_pixels_count",
+        "gaussian_ksize",
+        "canny_low",
+        "canny_high",
         "avg_eyebrow_y",
         "searchable_rows",
         "face_rect",
@@ -317,7 +353,7 @@ def _save_data_json(output_dir: Path, steps: dict) -> None:
 
 
 def _save_profiles_csv(output_dir: Path, steps: dict) -> None:
-    """Write per-row intensity and gradient data to ``profiles.csv``.
+    """Write per-row center column data to ``profiles.csv``.
 
     Parameters
     ----------
@@ -326,23 +362,16 @@ def _save_profiles_csv(output_dir: Path, steps: dict) -> None:
     steps : dict
         Result dictionary from ``HairlineDetector.detect()``.
     """
-    row_intensities = steps.get("row_intensities", np.array([]))
-    gradient = steps.get("gradient", np.array([]))
-    abs_gradient = steps.get("abs_gradient", np.array([]))
+    center_column = steps.get("center_column", np.array([]))
 
     path = output_dir / "profiles.csv"
     try:
         with open(path, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
-            writer.writerow(["row_index", "intensity", "gradient", "abs_gradient"])
-            n = len(row_intensities)
+            writer.writerow(["row_index", "center_column_value"])
+            n = len(center_column)
             for i in range(n):
-                writer.writerow([
-                    i,
-                    float(row_intensities[i]),
-                    float(gradient[i]) if i < len(gradient) else "",
-                    float(abs_gradient[i]) if i < len(abs_gradient) else "",
-                ])
+                writer.writerow([i, int(center_column[i])])
     except OSError as exc:
         warnings.warn(f"Could not save {path}: {exc}")
 
@@ -367,16 +396,18 @@ def _build_summary_text(image_path: Path, face_rect: tuple, steps: dict) -> str:
     x_start, x_end, y_start, y_end = steps["roi_coords"]
     hairline_y = steps["hairline_y"]
     method = steps["method"]
-    gradient_ratio = steps["gradient_ratio"]
+    edge_count = steps["edge_pixels_count"]
+    first_edge_idx = steps["first_edge_idx"]
 
     lines = [
         f"Image: {image_path.name}",
         f"Face size: {face_rect[2]}x{face_rect[3]} px",
-        f"Forehead ROI: {x_end - x_start}x{y_end - y_start} px",
-        f"Searchable rows: {steps['searchable_rows']}/{y_end - y_start} (top 75%)",
-        f"Max gradient: {steps['max_gradient_value']:.2f} at row {steps['max_gradient_idx']}",  # noqa: E501
-        f"Median gradient: {steps['median_gradient']:.2f}",
-        f"Ratio: {gradient_ratio:.2f}",
+        f"Forehead ROI: {x_end - x_start}x{y_end - y_start} px (1px wide strip)",
+        f"Searchable rows: {steps['searchable_rows']}",
+        f"First edge index: {first_edge_idx}",
+        f"Edge pixels in center column: {edge_count}",
+        f"Canny thresholds: low={steps['canny_low']}, high={steps['canny_high']}",
+        f"Gaussian ksize: {steps['gaussian_ksize']}",
         f"Result: {method} detection at y={hairline_y}",
     ]
     return "\n".join(lines)
@@ -430,11 +461,11 @@ def process_image(image_path: Path, visualize: bool) -> None:
     # Display windows only if requested
     if visualize:
         titles = [
-            "Step 1: Detect face & eyebrows",
-            "Step 2: Extract forehead ROI",
-            "Step 3: CLAHE enhancement",
-            "Step 4: Average intensity per row",
-            "Step 5: Vertical gradient magnitude",
+            "Step 1: Detect face & define ROI",
+            "Step 2: Extract 1px forehead ROI",
+            "Step 3: Canny context",
+            "Step 4: Canny edge map",
+            "Step 5: Center column scan",
             "Step 6: Detected hairline",
         ]
         for title, img in zip(titles, step_images):
