@@ -1,0 +1,200 @@
+{
+  "report_metadata": {
+    "project": "Facial Visagism Analysis System",
+    "date": "2026-05-28",
+    "author": "Development Team",
+    "scope": "Validation of 68-point facial landmark detection and hairline estimation against manually annotated ground truth",
+    "status": "Final",
+    "num_images_evaluated": 9,
+    "tool_version": "FR-016"
+  },
+  "summary": {
+    "overall_mean_error_px": 1.8,
+    "overall_nme": 0.0044,
+    "mean_hairline_error_px": 38.3,
+    "num_images": 9,
+    "images_with_perfect_landmarks": 4,
+    "images_with_perfect_hairline": 3,
+    "worst_mean_error_px": 5.84,
+    "worst_hairline_error_px": 164.0,
+    "best_mean_error_px": 0.0,
+    "best_hairline_error_px": 0.0
+  },
+  "per_image": [
+    {
+      "image_stem": "woman_6",
+      "mean_error_px": 2.88,
+      "nme": 0.0070,
+      "hairline_error_px": 46.0,
+      "qualitative_assessment": "Not explicitly rated; moderate overall",
+      "key_observations": "Hairline significantly off; 68-point landmarks acceptable",
+      "landmark_rating": "Acceptable",
+      "hairline_rating": "Poor"
+    },
+    {
+      "image_stem": "woman_7",
+      "mean_error_px": 0.0,
+      "nme": 0.0,
+      "hairline_error_px": 14.0,
+      "qualitative_assessment": "Very good",
+      "key_observations": "Near-perfect landmark detection; minor hairline offset",
+      "landmark_rating": "Perfect",
+      "hairline_rating": "Good"
+    },
+    {
+      "image_stem": "woman_8",
+      "mean_error_px": 2.15,
+      "nme": 0.0047,
+      "hairline_error_px": 29.0,
+      "qualitative_assessment": "Good; hairline could be better",
+      "key_observations": "Solid landmark alignment; hairline estimation struggles with forehead texture",
+      "landmark_rating": "Excellent",
+      "hairline_rating": "Fair"
+    },
+    {
+      "image_stem": "woman_9",
+      "mean_error_px": 0.0,
+      "nme": 0.0,
+      "hairline_error_px": 164.0,
+      "qualitative_assessment": "Terrible hairline (completely off)",
+      "key_observations": "Perfect dlib landmarks; hairline detector catastrophically failed—likely detected an eyebrow, shadow, or headband as the hairline",
+      "landmark_rating": "Perfect",
+      "hairline_rating": "Catastrophic"
+    },
+    {
+      "image_stem": "woman_10",
+      "mean_error_px": 2.58,
+      "nme": 0.0069,
+      "hairline_error_px": 2.0,
+      "qualitative_assessment": "Very good",
+      "key_observations": "Strong performance across all metrics; hairline nearly perfect",
+      "landmark_rating": "Excellent",
+      "hairline_rating": "Perfect"
+    },
+    {
+      "image_stem": "woman_11",
+      "mean_error_px": 5.84,
+      "nme": 0.0150,
+      "hairline_error_px": 90.0,
+      "qualitative_assessment": "Terrible hairline and terrible jaw",
+      "key_observations": "Highest landmark error in dataset; jawline points displaced; hairline severely incorrect",
+      "landmark_rating": "Acceptable",
+      "hairline_rating": "Catastrophic"
+    },
+    {
+      "image_stem": "woman_12",
+      "mean_error_px": 2.77,
+      "nme": 0.0061,
+      "hairline_error_px": 0.0,
+      "qualitative_assessment": "Very good",
+      "key_observations": "Excellent landmark and hairline detection",
+      "landmark_rating": "Excellent",
+      "hairline_rating": "Perfect"
+    },
+    {
+      "image_stem": "woman_13",
+      "mean_error_px": 0.0,
+      "nme": 0.0,
+      "hairline_error_px": 0.0,
+      "qualitative_assessment": "Very good",
+      "key_observations": "Perfect detection on all metrics—ideal case",
+      "landmark_rating": "Perfect",
+      "hairline_rating": "Perfect"
+    },
+    {
+      "image_stem": "woman_makeup_1",
+      "mean_error_px": 0.0,
+      "nme": 0.0,
+      "hairline_error_px": 0.0,
+      "qualitative_assessment": null,
+      "key_observations": "Perfect detection; makeup did not adversely affect dlib or hairline estimation",
+      "landmark_rating": "Perfect",
+      "hairline_rating": "Perfect"
+    }
+  ],
+  "per_region_overall": {
+    "jaw": 11.99,
+    "left_eye": 2.28,
+    "right_eye": 2.22,
+    "left_brow": 2.01,
+    "right_brow": 3.39,
+    "nose_bridge": 3.76,
+    "nose_tip": 23.77,
+    "outer_mouth": 2.36,
+    "inner_mouth": 2.43
+  },
+  "regional_analysis": {
+    "most_accurate_regions": [
+      {
+        "region": "left_brow",
+        "mean_error_px": 2.01,
+        "rank": 1,
+        "assessment": "Excellent"
+      },
+      {
+        "region": "right_eye",
+        "mean_error_px": 2.22,
+        "rank": 2,
+        "assessment": "Excellent"
+      },
+      {
+        "region": "left_eye",
+        "mean_error_px": 2.28,
+        "rank": 3,
+        "assessment": "Excellent"
+      }
+    ],
+    "least_accurate_regions": [
+      {
+        "region": "nose_tip",
+        "mean_error_px": 23.77,
+        "rank": 9,
+        "assessment": "Very Poor"
+      },
+      {
+        "region": "jaw",
+        "mean_error_px": 11.99,
+        "rank": 8,
+        "assessment": "Poor"
+      },
+      {
+        "region": "nose_bridge",
+        "mean_error_px": 3.76,
+        "rank": 7,
+        "assessment": "Good"
+      }
+    ]
+  },
+  "qualitative_notes": {
+    "very_good": ["woman_7", "woman_10", "woman_12", "woman_13"],
+    "good": ["woman_8"],
+    "terrible_hairline": ["woman_9", "woman_11"],
+    "terrible_jaw": ["woman_11"],
+    "not_rated": ["woman_6", "woman_makeup_1"]
+  },
+  "metrics_definitions": {
+    "mean_error_px": "Average Euclidean distance in pixels between predicted and ground-truth landmarks",
+    "nme": "Normalized Mean Error = mean_error_px / inter_ocular_distance (landmarks 36 and 45)",
+    "hairline_error_px": "Absolute vertical pixel difference between predicted and ground-truth hairline y-coordinate",
+    "per_region_mean": "Mean Euclidean error for all landmarks belonging to a specific facial region"
+  },
+  "thresholds": {
+    "nme_excellent": 0.01,
+    "nme_acceptable": 0.05,
+    "pixel_excellent": 3.0,
+    "pixel_acceptable": 6.0,
+    "hairline_good": 15.0,
+    "hairline_poor": 30.0
+  },
+  "skipped_files": [],
+  "recommendations": [
+    "Overhaul hairline detection using color-based segmentation, template matching, or multi-cue fusion",
+    "Refine jawline predictions with active contour models or bounding-box priors",
+    "Investigate nose tip outliers with per-image breakdown and visual inspection",
+    "Add per-landmark confidence scores from dlib shape predictor",
+    "Implement a frontal-pose quality gate to flag suboptimal images",
+    "Expand evaluation dataset to 20+ images with diverse demographics and conditions",
+    "Conduct inter-annotator agreement study to establish human baseline",
+    "Integrate evaluation pipeline into CI for automated regression testing"
+  ]
+}
