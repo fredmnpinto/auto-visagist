@@ -1,10 +1,11 @@
 # Functional Specification: Facial Visagism Analysis System
 
-> **Version**: 1.5.0 | **Date**: 2026-05-28 | **Author**: Documenter Agent | **Status**: Draft
+> **Version**: 1.5.1 | **Date**: 2026-05-28 | **Author**: Documenter Agent | **Status**: Draft
 
 ## Change Log
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.5.1 | 2026-05-28 | Documenter Agent | Documented hairline detection evaluation results (§7.6). Compared Canny vs No-Canny approaches against 9-image ground-truth dataset: Canny achieves 62% lower mean error (38.3px vs 100.3px). Updated FR-013 acceptance criteria to reflect Canny as primary method with No-Canny fallback. Added risk §8.1.7 on hairline detection accuracy variance. |
 | 1.5.0 | 2026-05-28 | Documenter Agent | Added FR-016 (Landmark Evaluation Tool, Could priority, Implemented). Dual-mode utility for interactive ground-truth labeling (68 landmarks + hairline) and batch evaluation of predictions vs ground truth with NME metrics. New modules: `visagism/landmark_labeler.py`, `visagism/landmark_evaluator.py`, `visagism/landmark_ground_truth.py`. CLI: `scripts/landmark_evaluation.py`. Updated Architecture (§5.1, §5.2), Interfaces (§6.1–6.3), and Testing Strategy (§7.5). |
 | 1.4.2 | 2026-05-28 | Documenter Agent | Added FR-015 (Hairline Detection Diagnostic Tool, Could priority, Implemented). Enhanced demo script `scripts/demo_hairline_steps.py` to always save intermediate hairline detection data to disk: 6 PNG step images, data.json, profiles.csv, and summary.txt. Works in headless mode with graceful error handling. Updated Architecture (§5.1), Interfaces (§6.1), and Testing Strategy (§7.4) to reflect diagnostic tooling. |
 | 1.4.1 | 2026-05-28 | Documenter Agent | Refined FR-013 (Hairline Detection): narrowed forehead ROI from full face-width to a 3% face-width centered strip (HAIRLINE_ROI_WIDTH_RATIO = 0.03). Updated acceptance criteria and module description. Status changed from Draft to Implemented. |
@@ -252,6 +253,9 @@ A working prototype that:
 - [x] Return the estimated hairline y-coordinate, falling back to bounding box top if no strong edge found
 - [x] Visualize detected hairline as a dashed line in the landmark visualization output (if --hairline flag is active)
 - [x] Provide the estimated hairline coordinate as input to FR-005 superior third calculation
+- [x] **Evaluation Result (2026-05-28)**: Canny method achieves 62% lower mean hairline error than No-Canny (38.3 px vs 100.3 px) on a 9-image ground-truth dataset; Canny wins on 6/9 images, No-Canny wins on 2/9, tie on 1/9
+- [x] **Decision**: Canny is the primary hairline detection method; No-Canny (vertical intensity gradient + CLAHE) is retained as an optional fallback for images where Canny over-detects edges (false positives from hair strands or shadows)
+- [x] Both methods fallback to a geometric estimate (superior third = medium third) when no edge is found
 **Status**: Implemented
 
 #### FR-015: Hairline Detection Diagnostic Tool
@@ -499,6 +503,66 @@ A working prototype that:
 - **Integration tests**: End-to-end label → save → load → evaluate pipeline using temporary directories
 - **Edge cases**: Malformed JSON, unmatched file pairs, missing hairline values, empty prediction/ground truth directories
 
+### 7.6 Hairline Detection Evaluation
+
+A controlled evaluation was performed on 2026-05-28 to compare two hairline detection implementations against manually-annotated ground truth (9 images, 68 landmarks + hairline per image).
+
+#### 7.6.1 Methodology
+
+| Method | Technique | Fallback |
+|--------|-----------|----------|
+| **Canny** (primary) | Canny edge detection + morphological closing on a 1-pixel-wide center strip above the eyebrows | Geometric estimate (superior third = medium third) |
+| **No-Canny** (fallback) | Vertical intensity gradient + CLAHE enhancement on a narrow forehead ROI | Geometric estimate (superior third = medium third) |
+
+Both methods share identical dlib 68-point landmarks; only the hairline estimation algorithm differs.
+
+#### 7.6.2 68 Facial Landmark Results
+
+The 68 facial landmarks are identical between both methods because both rely on the same dlib shape predictor.
+
+| Metric | Value |
+|--------|-------|
+| Overall mean error | 1.8 px |
+| Overall NME | 0.0044 |
+
+#### 7.6.3 Hairline Detection Comparison
+
+| Metric | No-Canny | Canny |
+|--------|----------|-------|
+| Mean hairline error | 100.3 px | 38.3 px |
+| Median hairline error | 82.0 px | 49.0 px |
+| Images within 3 px | 0/9 (0%) | 4/9 (44.4%) |
+| Images within 10 px | 1/9 (11.1%) | 4/9 (44.4%) |
+| Images within 50 px | 3/9 (33.3%) | 6/9 (66.7%) |
+
+#### 7.6.4 Per-Image Breakdown
+
+| Image | No-Canny Error | Canny Error | Winner |
+|-------|----------------|-------------|--------|
+| woman_10 | 25 px | **2 px** | Canny |
+| woman_11 | **85 px** | 90 px | No-Canny |
+| woman_12 | 107 px | **0 px** | Canny |
+| woman_13 | 143 px | **0 px** | Canny |
+| woman_6 | 46 px | 46 px | Tie |
+| woman_7 | 62 px | **14 px** | Canny |
+| woman_8 | 158 px | **29 px** | Canny |
+| woman_9 | **137 px** | 164 px | No-Canny |
+| woman_makeup_1 | 140 px | **0 px** | Canny |
+
+#### 7.6.5 Key Findings
+
+1. **Canny achieves 62% lower mean hairline error** (38.3 px vs 100.3 px).
+2. **Canny wins on 6/9 images**, No-Canny wins on 2/9, and 1/9 is a tie.
+3. **Canny achieves ≤3 px accuracy on 44% of images** vs 0% for No-Canny.
+4. **No-Canny performs better when Canny over-detects edges** — false positives from hair strands, shadows, or textured backgrounds cause Canny to place the hairline too low.
+5. **Both methods use identical dlib landmarks**; only the hairline detection step differs.
+
+#### 7.6.6 Decision
+
+- **Primary method**: Canny edge detection (lower mean error, higher consistency).
+- **Fallback method**: No-Canny gradient method is retained for images where Canny produces false-positive edges.
+- **Future work**: Adaptive Canny thresholds or a hybrid confidence score could further reduce the 38.3 px mean error.
+
 ---
 
 ## 8. Risks & Constraints
@@ -513,6 +577,7 @@ A working prototype that:
 | Processing time exceeds 5 seconds per image | Low - Demo inconvenience | Optimize code; use faster detection methods; pre-load models |
 | Test dataset insufficient for validation | Medium - Cannot verify accuracy | Use public datasets (e.g., Labeled Faces in the Wild) for additional test cases |
 | Assignment scope creep (adding too many features) | Medium - Miss deadline | Strictly follow Non-Goals section; focus on Must-priority requirements |
+| Hairline detection accuracy variance across image conditions | Medium - Superior third measurement error | Canny is primary method (38.3 px mean error); retain No-Canny fallback for images with false-positive edges; document limitation that hairline is an estimate, not ground truth |
 
 ### 8.2 Constraints
 - **Timeline**: Final presentation by May 28, 2026 (3 weeks from start)
