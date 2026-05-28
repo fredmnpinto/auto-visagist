@@ -1,10 +1,11 @@
 # Functional Specification: Facial Visagism Analysis System
 
-> **Version**: 1.4.0 | **Date**: 2026-05-07 | **Author**: Documenter Agent | **Status**: Draft
+> **Version**: 1.4.1 | **Date**: 2026-05-28 | **Author**: Documenter Agent | **Status**: Draft
 
 ## Change Log
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.4.1 | 2026-05-28 | Documenter Agent | Refined FR-013 (Hairline Detection): narrowed forehead ROI from full face-width to a 3% face-width centered strip (HAIRLINE_ROI_WIDTH_RATIO = 0.03). Updated acceptance criteria and module description. Status changed from Draft to Implemented. |
 | 1.4.0 | 2026-05-07 | Documenter Agent | Added FR-013 (Hairline Detection via Edge Detection) to support superior third calculation in FR-005. HairlineDetector uses Canny edge detection and horizontal line scanning above the eyebrows to estimate the hairline position. |
 | 1.3.0 | 2026-05-07 | Documenter Agent | Implemented core detection pipeline: FR-001 (Face Photo Input), FR-002 (Face Detection), FR-003 (Facial Landmark Detection), FR-004 (Landmark Visualization), FR-012 (Error Handling). All Must-priority requirements for input/detection/visualization complete. |
 | 1.0.0 | 2026-05-07 | Documenter Agent | Initial draft for Computer Vision assignment |
@@ -96,7 +97,7 @@ A working prototype that:
 | FR-007 | Golden Ratio Analysis | The system shall compare calculated facial proportions against the golden ratio (1.618) and identify proportions that deviate by more than 10% | Should | Visagism Methodology | FR-005 | Draft |
 | FR-011 | Analysis Report Generation | The system shall generate a text-based or visual report containing: detected face shape, calculated proportions with golden ratio comparison | Must | Assignment Spec §2.4 | FR-006, FR-007 | Draft |
 | FR-012 | Error Handling | The system shall gracefully handle errors including: no face detected, multiple faces detected (use largest), poor image quality, non-frontal poses with user warning | Must | Assignment Spec §2.5 | FR-002 | Implemented |
-| FR-013 | Hairline Detection via Edge Detection | The system shall estimate the hairline position using edge detection on the forehead region to support facial third measurements | Must | Visagism Methodology | FR-003 | Draft |
+| FR-013 | Hairline Detection via Edge Detection | The system shall estimate the hairline position using edge detection on the forehead region to support facial third measurements | Must | Visagism Methodology | FR-003 | Implemented |
 
 ### Detailed Acceptance Criteria
 
@@ -240,14 +241,14 @@ A working prototype that:
 **Source**: Visagism Methodology
 **Dependencies**: FR-003
 **Acceptance Criteria**:
-- [ ] Define a search region above the eyebrows, bounded by the face width, to locate the hairline
-- [ ] Apply preprocessing (Gaussian blur) to reduce noise in the forehead region
-- [ ] Use Canny edge detection to identify edges in the search region
-- [ ] Scan for strong continuous horizontal edges as candidate hairline positions
-- [ ] Return the estimated hairline y-coordinate, falling back to bounding box top if no strong edge found
-- [ ] Visualize detected hairline as a dashed line in the landmark visualization output (if --hairline flag is active)
-- [ ] Provide the estimated hairline coordinate as input to FR-005 superior third calculation
-**Status**: Draft
+- [x] Define a search region above the eyebrows, using a narrow centered strip of width `max(1, int(face_width * HAIRLINE_ROI_WIDTH_RATIO))` where `HAIRLINE_ROI_WIDTH_RATIO = 0.03` (3% of face width), centered on the face midline
+- [x] Apply preprocessing (Gaussian blur) to reduce noise in the forehead region
+- [x] Use Canny edge detection to identify edges in the search region
+- [x] Scan for strong continuous horizontal edges as candidate hairline positions
+- [x] Return the estimated hairline y-coordinate, falling back to bounding box top if no strong edge found
+- [x] Visualize detected hairline as a dashed line in the landmark visualization output (if --hairline flag is active)
+- [x] Provide the estimated hairline coordinate as input to FR-005 superior third calculation
+**Status**: Implemented
 
 ---
 
@@ -275,7 +276,7 @@ A working prototype that:
 | Image Input Module | Handle image loading and validation | Read image files, validate format/resolution, handle errors |
 | Face Detection Module | Detect faces in images | Use OpenCV cascade or dlib to locate faces, return bounding boxes |
 | Landmark Detection Module | Identify 68 facial landmarks | Use dlib shape predictor or similar to map facial points |
-| Hairline Detection Module | Estimate hairline position using edge detection | Use Canny edge detection on forehead region above eyebrows, scan for horizontal edges, return y-coordinate estimate |
+| Hairline Detection Module | Estimate hairline position using edge detection | Use Canny edge detection on a narrow centered forehead strip (3% of face width, centered on face midline) above the eyebrows, scan for horizontal edges, return y-coordinate estimate |
 | Proportion Calculator | Calculate facial measurements | Compute ratios, angles, thirds from landmark coordinates |
 | Face Shape Classifier | Classify face into 7 shape categories | Apply visagism rules to determine face shape |
 | Visagism Analyzer | Compare proportions to golden ratio | Identify deviations and generate analysis |
