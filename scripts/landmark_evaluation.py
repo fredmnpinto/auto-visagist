@@ -5,13 +5,13 @@ Dual-mode tool for facial landmark ground truth labeling and evaluation.
 Mode 1 (label): Interactive OpenCV GUI for manually annotating 68 facial
 landmarks plus hairline position.
 
-Mode 2 (evaluate): Batch comparison of predicted landmarks against ground
-truth with error metrics and report generation.
+Mode 2 (evaluate): Batch comparison of live-detected landmarks against
+ground truth with error metrics and report generation.
 
 Usage:
     python scripts/landmark_evaluation.py --mode label --input <image_or_dir>
     python scripts/landmark_evaluation.py --mode evaluate \
-        --predictions-dir <dir> --ground-truth-dir <dir>
+        --images-dir <dir> --ground-truth-dir <dir>
 """
 
 from __future__ import annotations
@@ -26,8 +26,14 @@ if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
 from visagism.errors import VisagismError  # noqa: E402
+from visagism.face_detector import FaceDetector  # noqa: E402
+from visagism.hairline_detector import HairlineDetector  # noqa: E402
+from visagism.image_loader import ImageLoader  # noqa: E402
+from visagism.landmark_detector import LandmarkDetector  # noqa: E402
 from visagism.landmark_evaluator import LandmarkEvaluator  # noqa: E402
+from visagism.landmark_ground_truth import LandmarkGroundTruth  # noqa: E402
 from visagism.landmark_labeler import LandmarkLabeler  # noqa: E402
+from visagism.model_finder import ModelFinder  # noqa: E402
 
 
 def _collect_image_paths(input_path: Path) -> list[Path]:
@@ -47,7 +53,7 @@ def _collect_image_paths(input_path: Path) -> list[Path]:
         return [input_path]
 
     if input_path.is_dir():
-        paths = []
+        paths: list[Path] = []
         for ext in ("*.jpg", "*.jpeg", "*.png"):
             paths.extend(input_path.glob(ext))
             paths.extend(input_path.glob(ext.upper()))
@@ -87,29 +93,110 @@ def _run_label_mode(args: argparse.Namespace) -> None:
 
 
 def _run_evaluate_mode(args: argparse.Namespace) -> None:
-    """Run batch evaluation and generate reports.
+    """Run batch evaluation using live detection and generate reports.
+
+    For each image in ``images_dir``, runs the full detection pipeline
+    (face detection → landmarks → hairline), creates a
+    ``LandmarkGroundTruth`` from the live predictions, and compares it
+    against the corresponding ground truth file.
 
     Parameters
     ----------
     args : argparse.Namespace
         Parsed CLI arguments.
     """
-    predictions_dir = Path(args.predictions_dir)
+    images_dir = Path(args.images_dir)
     ground_truth_dir = Path(args.ground_truth_dir)
 
-    if not predictions_dir.exists():
-        print(f"Error: Predictions directory not found: {predictions_dir}")
+    if not images_dir.exists():
+        print(f"Error: Images directory not found: {images_dir}")
         sys.exit(1)
     if not ground_truth_dir.exists():
         print(f"Error: Ground truth directory not found: {ground_truth_dir}")
         sys.exit(1)
 
-    print("Evaluation mode:")
-    print(f"  Predictions: {predictions_dir.resolve()}")
-    print(f"  Ground truth: {ground_truth_dir.resolve()}")
+    # Collect images
+    image_paths = _collect_image_paths(images_dir)
+    if not image_paths:
+        print(f"Error: No valid images found in {images_dir}")
+        sys.exit(1)
 
-    evaluator = LandmarkEvaluator(predictions_dir, ground_truth_dir)
-    report = evaluator.batch_evaluate()
+    # Initialise detection pipeline (once)
+    model_path = ModelFinder.find()
+    face_detector = FaceDetector()
+    landmark_detector = LandmarkDetector(model_path)
+    hairline_detector = HairlineDetector()
+
+    # Load ground truth files by stem (strip _gt suffix)
+    gt_files = {}
+    gt_original_stems = {}
+    for p in ground_truth_dir.glob("*.json"):
+        stem = p.stem
+        original_stem = stem
+        if stem.endswith("_gt"):
+            stem = stem[:-3]  # Remove _gt suffix
+        gt_files[stem] = p
+        gt_original_stems[stem] = original_stem
+
+    pairs: list[tuple[LandmarkGroundTruth, LandmarkGroundTruth]] = []
+    skipped: list[str] = []
+
+    # Report ground truth files without matching images
+    image_stems = {p.stem for p in image_paths}
+    for stem in sorted(set(gt_files.keys()) - image_stems):
+        skipped.append(
+            f"No image for ground truth: {gt_original_stems[stem]}"
+        )
+
+    for img_path in image_paths:
+        stem = img_path.stem
+        if stem not in gt_files:
+            skipped.append(f"No ground truth for image: {stem}")
+            continue
+
+        try:
+            # 1. Load image
+            img_bgr, img_gray = ImageLoader.load(img_path)
+
+            # 2. Detect face
+            face_rect = face_detector.detect(img_gray, img_bgr.shape[:2])
+
+            # 3. Detect landmarks
+            landmarks = landmark_detector.detect(
+                img_gray, face_rect, img_path,
+            )
+
+            # 4. Detect hairline
+            result = hairline_detector.detect(img_gray, landmarks)
+            hairline_y = result["hairline_y"]
+
+            # 5. Create prediction ground truth from live detection
+            pred_gt = LandmarkGroundTruth(
+                image_path=img_path,
+                image_width=img_bgr.shape[1],
+                image_height=img_bgr.shape[0],
+                landmarks_68=landmarks.landmarks_68,
+                hairline_y=hairline_y,
+            )
+
+            # 6. Load ground truth
+            gt = LandmarkGroundTruth.load(gt_files[stem])
+            pairs.append((pred_gt, gt))
+
+        except VisagismError as exc:
+            skipped.append(f"Detection failed for {stem}: {exc}")
+        except Exception as exc:
+            skipped.append(f"Error processing {stem}: {exc}")
+
+    print("Evaluation mode:")
+    print(f"  Images directory: {images_dir.resolve()}")
+    print(f"  Ground truth directory: {ground_truth_dir.resolve()}")
+    print(f"  Images with ground truth: {len(pairs)}")
+    print(f"  Skipped: {len(skipped)}")
+
+    evaluator = LandmarkEvaluator()
+    report = evaluator.evaluate_pairs(pairs)
+    report.skipped_files.extend(skipped)
 
     # Print console table
     table = LandmarkEvaluator.generate_console_table(report)
@@ -138,9 +225,9 @@ def main() -> None:
             "  # Label all images in a directory\n"
             "  python scripts/landmark_evaluation.py --mode label "
             "--input ./photos/\n\n"
-            "  # Evaluate predictions against ground truth\n"
+            "  # Evaluate live detections against ground truth\n"
             "  python scripts/landmark_evaluation.py --mode evaluate "
-            "--predictions-dir ./pred/ --ground-truth-dir ./gt/ "
+            "--images-dir ./photos/ --ground-truth-dir ./gt/ "
             "--report report.json"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -171,9 +258,9 @@ def main() -> None:
 
     # Evaluate mode arguments
     parser.add_argument(
-        "--predictions-dir", "-p",
+        "--images-dir",
         type=str,
-        help="Directory containing prediction JSON files (evaluate mode)",
+        help="Directory containing input images (evaluate mode)",
     )
     parser.add_argument(
         "--ground-truth-dir", "-g",
@@ -194,9 +281,9 @@ def main() -> None:
                 parser.error("--input is required for label mode")
             _run_label_mode(args)
         elif args.mode == "evaluate":
-            if not args.predictions_dir or not args.ground_truth_dir:
+            if not args.images_dir or not args.ground_truth_dir:
                 parser.error(
-                    "--predictions-dir and --ground-truth-dir are required "
+                    "--images-dir and --ground-truth-dir are required "
                     "for evaluate mode"
                 )
             _run_evaluate_mode(args)

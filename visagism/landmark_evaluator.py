@@ -99,10 +99,18 @@ class LandmarkEvaluator:
 
     def __init__(
         self,
-        predictions_dir: Path,
-        ground_truth_dir: Path,
+        predictions_dir: Path | None = None,
+        ground_truth_dir: Path | None = None,
     ) -> None:
-        """Initialise the evaluator with source directories."""
+        """Initialise the evaluator with optional source directories.
+
+        Parameters
+        ----------
+        predictions_dir : Path or None
+            Directory containing prediction JSON files.
+        ground_truth_dir : Path or None
+            Directory containing ground truth JSON files.
+        """
         self._predictions_dir = predictions_dir
         self._ground_truth_dir = ground_truth_dir
 
@@ -283,6 +291,37 @@ class LandmarkEvaluator:
             num_valid_landmarks=valid_count,
         )
 
+    def evaluate_pairs(
+        self,
+        pairs: list[tuple[LandmarkGroundTruth, LandmarkGroundTruth]],
+    ) -> EvaluationReport:
+        """Evaluate a list of pre-loaded prediction/ground-truth pairs.
+
+        Parameters
+        ----------
+        pairs : list of tuple
+            Each tuple contains ``(prediction, ground_truth)`` as
+            ``LandmarkGroundTruth`` instances.
+
+        Returns
+        -------
+        EvaluationReport
+            Aggregated evaluation report.
+        """
+        skipped: list[str] = []
+        per_image_results: list[ImageEvaluationResult] = []
+
+        for pred, gt in pairs:
+            try:
+                result = self.evaluate_pair(pred, gt)
+                per_image_results.append(result)
+            except Exception as exc:
+                skipped.append(
+                    f"Error evaluating {gt.image_path.stem}: {exc}"
+                )
+
+        return self._build_report(per_image_results, skipped)
+
     def batch_evaluate(self) -> EvaluationReport:
         """Run batch evaluation over all matched file pairs.
 
@@ -294,7 +333,19 @@ class LandmarkEvaluator:
         -------
         EvaluationReport
             Aggregated evaluation report.
+
+        Raises
+        ------
+        ValueError
+            If ``predictions_dir`` or ``ground_truth_dir`` was not
+            provided at initialisation.
         """
+        if self._predictions_dir is None or self._ground_truth_dir is None:
+            raise ValueError(
+                "batch_evaluate() requires predictions_dir and "
+                "ground_truth_dir to be set at initialisation."
+            )
+
         # Build stem -> path mappings
         pred_files = {
             p.stem: p for p in self._predictions_dir.glob("*.json")

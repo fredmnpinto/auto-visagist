@@ -289,6 +289,121 @@ class TestLandmarkEvaluatorBatch:
         assert len(report.per_image) == 2
 
 
+class TestLandmarkEvaluatorPairs:
+    """Tests for evaluate_pairs with pre-loaded prediction/ground-truth."""
+
+    def test_evaluate_pairs_empty(self) -> None:
+        """Test evaluate_pairs with an empty list."""
+        evaluator = LandmarkEvaluator()
+        report = evaluator.evaluate_pairs([])
+        assert report.summary["num_images"] == 0
+
+    def test_evaluate_pairs_single(self) -> None:
+        """Test evaluate_pairs with a single perfect-match pair."""
+        landmarks = [(i, i * 2) for i in range(68)]
+        pred = LandmarkGroundTruth(
+            image_path=Path("/tmp/test.jpg"),
+            image_width=100,
+            image_height=100,
+            landmarks_68=landmarks,
+            hairline_y=50,
+        )
+        gt = LandmarkGroundTruth(
+            image_path=Path("/tmp/test.jpg"),
+            image_width=100,
+            image_height=100,
+            landmarks_68=landmarks,
+            hairline_y=50,
+        )
+        evaluator = LandmarkEvaluator()
+        report = evaluator.evaluate_pairs([(pred, gt)])
+        assert report.summary["num_images"] == 1
+        assert report.summary["overall_mean_error_px"] == pytest.approx(0.0)
+        assert report.summary["overall_nme"] == pytest.approx(0.0)
+        assert report.summary["mean_hairline_error_px"] == pytest.approx(0.0)
+
+    def test_evaluate_pairs_multiple(self) -> None:
+        """Test evaluate_pairs with multiple pairs."""
+        pairs: list[tuple[LandmarkGroundTruth, LandmarkGroundTruth]] = []
+        for i, name in enumerate(["img1", "img2"]):
+            landmarks = [(i, i) for _ in range(68)]
+            pred = LandmarkGroundTruth(
+                image_path=Path(f"/tmp/{name}.jpg"),
+                image_width=100,
+                image_height=100,
+                landmarks_68=landmarks,
+            )
+            gt = LandmarkGroundTruth(
+                image_path=Path(f"/tmp/{name}.jpg"),
+                image_width=100,
+                image_height=100,
+                landmarks_68=[(0, 0)] * 68,
+            )
+            pairs.append((pred, gt))
+
+        evaluator = LandmarkEvaluator()
+        report = evaluator.evaluate_pairs(pairs)
+        assert report.summary["num_images"] == 2
+        assert len(report.per_image) == 2
+
+    def test_evaluate_pairs_with_errors(self) -> None:
+        """Test evaluate_pairs computes errors correctly."""
+        pred_landmarks = [(0, 0)] * 68
+        gt_landmarks = [(3, 4)] * 68
+        # Set up IOD = 50
+        pred_landmarks[36] = (0, 0)
+        gt_landmarks[36] = (3, 4)
+        pred_landmarks[45] = (50, 0)
+        gt_landmarks[45] = (53, 4)
+
+        pred = LandmarkGroundTruth(
+            image_path=Path("/tmp/test.jpg"),
+            image_width=100,
+            image_height=100,
+            landmarks_68=pred_landmarks,
+        )
+        gt = LandmarkGroundTruth(
+            image_path=Path("/tmp/test.jpg"),
+            image_width=100,
+            image_height=100,
+            landmarks_68=gt_landmarks,
+        )
+        evaluator = LandmarkEvaluator()
+        report = evaluator.evaluate_pairs([(pred, gt)])
+        assert report.summary["overall_mean_error_px"] == pytest.approx(5.0)
+        assert report.summary["overall_nme"] == pytest.approx(0.1)
+
+    def test_evaluate_pairs_skips_on_exception(self) -> None:
+        """Test that evaluate_pairs skips pairs that raise exceptions."""
+        pred = LandmarkGroundTruth(
+            image_path=Path("/tmp/test.jpg"),
+            image_width=100,
+            image_height=100,
+            landmarks_68=[(0, 0)] * 67 + [(1, 1)],  # 68 points
+        )
+        # Create a malformed gt that will cause an issue
+        # We'll monkey-patch evaluate_pair to raise for this test
+        evaluator = LandmarkEvaluator()
+
+        def _raise(*args, **kwargs):
+            raise RuntimeError("boom")
+
+        original = evaluator.evaluate_pair
+        evaluator.evaluate_pair = _raise  # type: ignore[method-assign]
+        try:
+            report = evaluator.evaluate_pairs([(pred, pred)])
+            assert report.summary["num_images"] == 0
+            assert any("boom" in s for s in report.skipped_files)
+        finally:
+            evaluator.evaluate_pair = original  # type: ignore[method-assign]
+
+    def test_batch_evaluate_without_dirs_raises(self) -> None:
+        """Test that batch_evaluate raises when dirs are not set."""
+        evaluator = LandmarkEvaluator()
+        with pytest.raises(ValueError):
+            evaluator.batch_evaluate()
+
+
 class TestLandmarkEvaluatorReport:
     """Tests for report generation and formatting."""
 
