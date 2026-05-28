@@ -30,6 +30,38 @@ MSc Computer Vision assignment @ Universidade de Aveiro, 2025/2026.
 | Typecheck | `python -m mypy src/` |
 | Run CLI | `python visagism_analyzer.py --input <path> [--visualize]` |
 
+## Landmark Evaluation Tool
+
+Dual-mode utility for creating ground-truth landmark labels and evaluating detection accuracy against them.
+
+| Mode | Command |
+|------|---------|
+| Label | `python scripts/landmark_evaluation.py --mode label --input <image_or_dir>` |
+| Evaluate | `python scripts/landmark_evaluation.py --mode evaluate --images-dir <dir> --ground-truth-dir <dir>` |
+
+### Labeling Workflow
+
+- Predictions are always shown as starting points (gray circles).
+- Click any landmark to correct its position.
+- Press `r` to reset all landmarks to the current prediction.
+- Use arrow keys, `n` / `p` for image navigation.
+- Labels auto-save to `ground_truth/<stem>_gt.json`.
+
+### Evaluation Workflow
+
+- Runs the live detection pipeline on each image.
+- Compares predicted landmarks against ground truth.
+- Reports mean pixel error, NME, per-region errors, and hairline error.
+
+### File Naming Convention
+
+| Type | Example |
+|------|---------|
+| Image | `woman_10.png` |
+| Ground truth | `woman_10_gt.json` |
+
+The `_gt` suffix is stripped during matching so the evaluator can pair images with their labels.
+
 ## Code Style
 
 ### Imports
