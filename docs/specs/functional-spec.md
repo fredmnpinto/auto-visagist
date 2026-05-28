@@ -1,10 +1,11 @@
 # Functional Specification: Facial Visagism Analysis System
 
-> **Version**: 1.4.2 | **Date**: 2026-05-28 | **Author**: Documenter Agent | **Status**: Draft
+> **Version**: 1.5.0 | **Date**: 2026-05-28 | **Author**: Documenter Agent | **Status**: Draft
 
 ## Change Log
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.5.0 | 2026-05-28 | Documenter Agent | Added FR-016 (Landmark Evaluation Tool, Could priority, Implemented). Dual-mode utility for interactive ground-truth labeling (68 landmarks + hairline) and batch evaluation of predictions vs ground truth with NME metrics. New modules: `visagism/landmark_labeler.py`, `visagism/landmark_evaluator.py`, `visagism/landmark_ground_truth.py`. CLI: `scripts/landmark_evaluation.py`. Updated Architecture (§5.1, §5.2), Interfaces (§6.1–6.3), and Testing Strategy (§7.5). |
 | 1.4.2 | 2026-05-28 | Documenter Agent | Added FR-015 (Hairline Detection Diagnostic Tool, Could priority, Implemented). Enhanced demo script `scripts/demo_hairline_steps.py` to always save intermediate hairline detection data to disk: 6 PNG step images, data.json, profiles.csv, and summary.txt. Works in headless mode with graceful error handling. Updated Architecture (§5.1), Interfaces (§6.1), and Testing Strategy (§7.4) to reflect diagnostic tooling. |
 | 1.4.1 | 2026-05-28 | Documenter Agent | Refined FR-013 (Hairline Detection): narrowed forehead ROI from full face-width to a 3% face-width centered strip (HAIRLINE_ROI_WIDTH_RATIO = 0.03). Updated acceptance criteria and module description. Status changed from Draft to Implemented. |
 | 1.4.0 | 2026-05-07 | Documenter Agent | Added FR-013 (Hairline Detection via Edge Detection) to support superior third calculation in FR-005. HairlineDetector uses Canny edge detection and horizontal line scanning above the eyebrows to estimate the hairline position. |
@@ -100,6 +101,7 @@ A working prototype that:
 | FR-012 | Error Handling | The system shall gracefully handle errors including: no face detected, multiple faces detected (use largest), poor image quality, non-frontal poses with user warning | Must | Assignment Spec §2.5 | FR-002 | Implemented |
 | FR-013 | Hairline Detection via Edge Detection | The system shall estimate the hairline position using edge detection on the forehead region to support facial third measurements | Must | Visagism Methodology | FR-003 | Implemented |
 | FR-015 | Hairline Detection Diagnostic Tool | The system shall provide a diagnostic script that visualizes and saves intermediate hairline detection data to disk for debugging and validation of FR-013 | Could | Development Team | FR-013 | Implemented |
+| FR-016 | Landmark Evaluation Tool | The system shall provide a dual-mode utility for creating ground-truth facial landmark annotations (68 points + hairline) and evaluating predicted landmarks against ground truth with per-landmark, per-region, and NME metrics | Could | Development Team | FR-003, FR-013 | Implemented |
 
 ### Detailed Acceptance Criteria
 
@@ -267,6 +269,38 @@ A working prototype that:
 - [x] Create output directory automatically (`output/<image_stem>/`) with `mkdir(parents=True, exist_ok=True)`
 **Status**: Implemented
 
+#### FR-016: Landmark Evaluation Tool
+**Description**: The system shall provide a dual-mode utility for creating ground-truth facial landmark annotations and evaluating predicted landmarks against ground truth.
+**Priority**: Could
+**Source**: Development Team (validation support for FR-003 and FR-013)
+**Dependencies**: FR-003, FR-013
+**Acceptance Criteria**:
+
+*Mode 1 — Data Labeling*:
+- [x] Launch interactive OpenCV GUI via `python scripts/landmark_evaluation.py --mode label --input <image_or_dir>`
+- [x] Always pre-fill with dlib 68-point predictions displayed as gray circles
+- [x] User left-click places/corrects a landmark; corrected landmarks switch to region-colored circles
+- [x] Keyboard navigation: arrow keys or `n`/`p` for next/previous landmark; `Shift+N`/`Shift+P` for next/previous image; `0-9` for direct jump to landmark index
+- [x] `s` key saves current ground truth to JSON; `q` or `Esc` quits; `r` resets active landmark to prediction
+- [x] Auto-save current image ground truth when navigating to next/previous image
+- [x] Resume capability: loads existing `<stem>_gt.json` ground truth if present, preserving prior corrections
+- [x] Hairline labeling mode (index 68): click to set y-position, displayed as dashed horizontal line
+- [x] Save JSON format includes: `image_path`, `image_width`, `image_height`, `landmarks_68`, `hairline_y`, `corrected_landmarks`, `timestamp`
+- [x] Graceful fallback to manual mode if dlib detection fails
+
+*Mode 2 — Evaluation*:
+- [x] Launch batch evaluation via `python scripts/landmark_evaluation.py --mode evaluate --predictions-dir <dir> --ground-truth-dir <dir> [--report <path>]`
+- [x] Match prediction and ground truth files by image stem (filename without extension)
+- [x] Compute per-landmark Euclidean error in pixels for all 68 points
+- [x] Compute overall mean error per image and across all images
+- [x] Compute per-region mean errors (jaw, brows, nose, eyes, mouth)
+- [x] Compute Normalized Mean Error (NME) = mean error / inter-ocular distance (landmarks 36 and 45)
+- [x] Compute hairline absolute error = |pred_y - gt_y| when both values present
+- [x] Generate console table with summary, per-region means, per-image results, and skipped files
+- [x] Generate JSON report with `summary`, `per_image`, `per_region_overall`, and `skipped_files`
+- [x] Gracefully skip unmatched pairs, malformed JSON, and missing hairline values
+**Status**: Implemented
+
 ---
 
 ## 4. Non-Functional Requirements
@@ -300,6 +334,9 @@ A working prototype that:
 | Visualization Module | Display landmarks and measurements | Overlay points/lines on image, create output visualization |
 | Report Generator | Create analysis reports | Compile results into text/visual report format |
 | Diagnostic / Demo Scripts | Support debugging and validation of hairline detection | Save intermediate step images, raw numerical data (JSON), per-row CSV profiles, and text summaries to `output/<image_stem>/` for manual inspection and algorithm tuning |
+| Landmark Ground Truth Module | Store and serialize manually-annotated landmark data | Define `LandmarkGroundTruth` dataclass with 68 landmarks, hairline, corrected indices; JSON save/load; region lookup; validation |
+| Landmark Labeler Module | Interactive GUI for manual landmark annotation | OpenCV window with mouse/keyboard callbacks; pre-fill dlib predictions; save/resume ground truth JSON; hairline labeling mode |
+| Landmark Evaluator Module | Compare predictions against ground truth | Compute per-landmark Euclidean errors, NME, per-region means, hairline error; generate console tables and JSON reports; graceful skip for malformed data |
 
 ### 5.2 Data Models
 
@@ -331,6 +368,17 @@ A working prototype that:
 | shape_confidence | Float | No | Confidence score for classification |
 | golden_ratio_deviations | Dict | No | Proportions deviating >10% from golden ratio |
 
+#### Model: LandmarkGroundTruth
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| image_path | Path | Yes | Path to input image |
+| image_width | Integer | Yes | Image width in pixels |
+| image_height | Integer | Yes | Image height in pixels |
+| landmarks_68 | List of (x, y) tuples | Yes | 68 landmark coordinates; unplaced = (-1, -1) |
+| hairline_y | Integer or None | No | Manually labeled hairline y-coordinate |
+| corrected_landmarks | List of integers | No | Indices of landmarks manually corrected by user |
+| timestamp | String (ISO-8601) | Yes | Creation/modification timestamp |
+
 ### 5.3 Technology Stack
 - **Language**: Python 3.8+
 - **Computer Vision**: OpenCV 4.x (opencv-python)
@@ -350,8 +398,20 @@ A working prototype that:
 ### 6.1 User Interface
 - **Primary Interface**: Command-line interface (CLI)
 - **Diagnostic Scripts**: `scripts/demo_hairline_steps.py` for step-by-step hairline detection visualization and disk output; `scripts/diagnose_hairline.py` for batch diagnostic figures
+- **Landmark Evaluation Tool**: `scripts/landmark_evaluation.py` for interactive ground-truth labeling and batch evaluation
 - **Usage**: `python visagism.py --input <image_path> [--output <output_dir>] [--visualize] [--save-viz] [--hairline]`
 - **Demo Script Usage**: `python scripts/demo_hairline_steps.py --input <image_path> [--visualize]`
+- **Landmark Evaluation Usage**:
+  ```bash
+  # Label a single image or directory
+  python scripts/landmark_evaluation.py --mode label --input photos/face.jpg
+  python scripts/landmark_evaluation.py --mode label --input ./photos/ --output ./ground_truth/
+
+  # Evaluate predictions against ground truth
+  python scripts/landmark_evaluation.py --mode evaluate \
+      --predictions-dir ./predictions/ --ground-truth-dir ./ground_truth/ \
+      --report evaluation_report.json
+  ```
 - **Example**:
   ```bash
   # Process single image
@@ -369,6 +429,12 @@ A working prototype that:
 | --visualize | Flag | No | Display landmark visualization window |
 | --save-viz | Flag | No | Save visualization to file without displaying |
 | --hairline | Flag | No | Enable hairline detection visualization (dashed line) |
+| --mode | String | Yes (landmark_evaluation.py) | Tool mode: `label` or `evaluate` |
+| --input | String (path) | Yes (label mode) | Path to image file or directory |
+| --output | String (path) | No (label mode) | Output directory for ground truth JSON (default: ./ground_truth) |
+| --predictions-dir | String (path) | Yes (evaluate mode) | Directory containing prediction JSON files |
+| --ground-truth-dir | String (path) | Yes (evaluate mode) | Directory containing ground truth JSON files |
+| --report | String (path) | No (evaluate mode) | Path to save JSON evaluation report |
 
 ### 6.3 Output Format
 - **Console Output**: Analysis summary with face shape and golden ratio comparisons
@@ -379,6 +445,11 @@ A working prototype that:
   - `output/<image_stem>/data.json` — raw numerical hairline detection data
   - `output/<image_stem>/profiles.csv` — per-row intensity and gradient profiles
   - `output/<image_stem>/summary.txt` — human-readable text summary
+- **Ground Truth Files** (from `scripts/landmark_evaluation.py --mode label`):
+  - `ground_truth/<image_stem>_gt.json` — manually annotated 68 landmarks, hairline, and metadata
+- **Evaluation Reports** (from `scripts/landmark_evaluation.py --mode evaluate`):
+  - Console table with overall mean error, NME, per-region means, per-image breakdown, and skipped files
+  - JSON report with `summary`, `per_image`, `per_region_overall`, `skipped_files`
 
 ### 6.4 Error Handling
 - All errors displayed in clear, user-friendly messages
@@ -420,6 +491,13 @@ A working prototype that:
 - **Fallback images**: Have 3 guaranteed-working images for live demo
 - **Performance**: Verify processing time <5 seconds per image
 - **Diagnostic validation**: Use `scripts/demo_hairline_steps.py` to inspect intermediate hairline detection outputs (step images, `data.json`, `profiles.csv`, `summary.txt`) and confirm algorithm behaviour on test images
+
+### 7.5 Landmark Evaluation Tool Testing
+- **Unit tests** for `LandmarkGroundTruth` serialization/deserialization (`tests/test_landmark_ground_truth.py`): save/load round-trip, validation of landmark count, padding/truncation of malformed input, region lookup, completion counting
+- **Unit tests** for `LandmarkEvaluator` metrics (`tests/test_landmark_evaluator.py`): per-landmark Euclidean errors, NME calculation, inter-ocular distance computation, per-region mean errors, hairline absolute error, report aggregation, graceful handling of missing landmarks (-1, -1) and zero inter-ocular distance
+- **Unit tests** for `LandmarkLabeler` state management (`tests/test_landmark_labeler.py`): navigation (next/prev landmark and image), reset to prediction, save path generation, ground truth resume, completion tracking
+- **Integration tests**: End-to-end label → save → load → evaluate pipeline using temporary directories
+- **Edge cases**: Malformed JSON, unmatched file pairs, missing hairline values, empty prediction/ground truth directories
 
 ---
 
