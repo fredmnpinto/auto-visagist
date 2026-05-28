@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import csv
+import json
 import sys
+import warnings
 from pathlib import Path
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -110,15 +113,46 @@ def _create_step6_image(
     return img
 
 
-def process_image(image_path: Path, visualize: bool) -> None:
-    """Process a single image and display each step sequentially."""
-    print(f"\n{'=' * 60}\nProcessing: {image_path.name}\n{'=' * 60}")
-    img_bgr, img_gray = ImageLoader.load(image_path)
-    img_h, img_w = img_gray.shape[:2]
-    face_rect = FaceDetector().detect(img_gray, (img_h, img_w))
-    model_path = ModelFinder.find()
-    landmarks = LandmarkDetector(model_path).detect(img_gray, face_rect, image_path)
-    steps = HairlineDetector().detect(img_gray, landmarks)
+def _ensure_output_dir(image_path: Path) -> Path:
+    """Create and return the output directory for a given image.
+
+    Parameters
+    ----------
+    image_path : Path
+        Path to the input image.
+
+    Returns
+    -------
+    Path
+        Path to ``output/<image_stem>/``.
+    """
+    output_dir = Path("output") / image_path.stem
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return output_dir
+
+
+def _build_step_images(
+    img_bgr: ImageArray,
+    landmarks: FacialLandmarks,
+    steps: dict,
+) -> list[np.ndarray]:
+    """Build all 6 step images for the hairline detection pipeline.
+
+    Parameters
+    ----------
+    img_bgr : ImageArray
+        Original BGR image.
+    landmarks : FacialLandmarks
+        Detected facial landmarks.
+    steps : dict
+        Result dictionary from ``HairlineDetector.detect()``.
+
+    Returns
+    -------
+    list[np.ndarray]
+        List of 6 BGR images, one per step.
+    """
+    x_start, x_end, y_start, y_end = steps["roi_coords"]
     roi = steps["roi_raw"]
     roi_enhanced = steps["roi_enhanced"]
     row_intensities = steps["row_intensities"]
@@ -126,45 +160,285 @@ def process_image(image_path: Path, visualize: bool) -> None:
     hairline_y = steps["hairline_y"]
     method = steps["method"]
     gradient_ratio = steps["gradient_ratio"]
-    x_start, x_end, y_start, y_end = steps["roi_coords"]
-    print(f"\n  Image: {image_path.name}\n"
-          f"  Face size: {face_rect[2]}x{face_rect[3]} px\n"
-          f"  Forehead ROI: {x_end - x_start}x{y_end - y_start} px\n"
-          f"  Searchable rows: {steps['searchable_rows']}/{y_end - y_start} (top 75%)\n"
-          f"  Max gradient: {steps['max_gradient_value']:.2f} at row {steps['max_gradient_idx']}\n"  # noqa: E501
-          f"  Median gradient: {steps['median_gradient']:.2f}\n"
-          f"  Ratio: {gradient_ratio:.2f}\n"
-          f"  Result: {method} detection at y={hairline_y}")
-    if not visualize:
-        print("Running headless...")
-        return
-    _show_step("Step 1: Detect face & eyebrows",
-               _create_step1_image(img_bgr, landmarks, x_start, x_end, y_start, y_end))
-    roi_bgr = cv2.cvtColor(roi, cv2.COLOR_GRAY2BGR) if roi.ndim == 2 else roi
-    h_roi, w_roi = roi.shape[:2]
+
+    step_images: list[np.ndarray] = []
+
+    # Step 1: Face and ROI
+    step_images.append(
+        _create_step1_image(img_bgr, landmarks, x_start, x_end, y_start, y_end)
+    )
+
+    # Step 2: Forehead ROI
+    if roi.size > 0 and roi.ndim == 2:
+        roi_bgr = cv2.cvtColor(roi, cv2.COLOR_GRAY2BGR)
+    elif roi.size > 0:
+        roi_bgr = roi.copy()
+    else:
+        roi_bgr = np.full((100, 100, 3), 40, dtype=np.uint8)
+        cv2.putText(
+            roi_bgr, "Empty ROI", (10, 50),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1,
+        )
+    h_roi, w_roi = roi_bgr.shape[:2]
     cv2.putText(roi_bgr, f"{w_roi}x{h_roi} px", (10, h_roi - 15),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
-    _show_step("Step 2: Extract forehead ROI", roi_bgr)
-    _show_step("Step 3: CLAHE enhancement",
-               cv2.cvtColor(roi_enhanced, cv2.COLOR_GRAY2BGR))
-    min_idx = int(np.argmin(row_intensities[:steps["searchable_rows"]]))
-    _show_step(
-        "Step 4: Average intensity per row",
-        _draw_graph(row_intensities, "Average intensity per row", 255.0, min_idx),
+    step_images.append(roi_bgr)
+
+    # Step 3: CLAHE enhanced
+    if roi_enhanced.size > 0 and roi_enhanced.ndim == 2:
+        clahe_bgr = cv2.cvtColor(roi_enhanced, cv2.COLOR_GRAY2BGR)
+    elif roi_enhanced.size > 0:
+        clahe_bgr = roi_enhanced.copy()
+    else:
+        clahe_bgr = np.full((100, 100, 3), 40, dtype=np.uint8)
+        cv2.putText(
+            clahe_bgr, "Empty ROI", (10, 50),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1,
+        )
+    step_images.append(clahe_bgr)
+
+    # Step 4: Intensity graph
+    searchable_rows = steps.get("searchable_rows", 0)
+    if len(row_intensities) > 0 and searchable_rows > 0:
+        min_idx = int(np.argmin(row_intensities[:searchable_rows]))
+    else:
+        min_idx = None
+    step_images.append(
+        _draw_graph(row_intensities, "Average intensity per row", 255.0, min_idx)
     )
-    _show_step(
-        "Step 5: Vertical gradient magnitude",
+
+    # Step 5: Gradient graph
+    step_images.append(
         _draw_graph(
-            abs_gradient, "Vertical gradient magnitude",
-            steps["max_gradient_value_full"], steps["max_gradient_idx"],
-        ),
+            abs_gradient,
+            "Vertical gradient magnitude",
+            steps["max_gradient_value_full"] if steps["max_gradient_value_full"] > 0 else None,  # noqa: E501
+            steps["max_gradient_idx"] if steps["max_gradient_idx"] >= 0 else None,
+        )
     )
-    _show_step(
-        "Step 6: Detected hairline",
-        _create_step6_image(
-            img_bgr, landmarks, hairline_y, method, gradient_ratio,
-        ),
+
+    # Step 6: Final result
+    step_images.append(
+        _create_step6_image(img_bgr, landmarks, hairline_y, method, gradient_ratio)
     )
+
+    return step_images
+
+
+def _save_step_images(output_dir: Path, step_images: list[np.ndarray]) -> None:
+    """Save the 6 step images as PNG files.
+
+    Parameters
+    ----------
+    output_dir : Path
+        Directory where images will be saved.
+    step_images : list[np.ndarray]
+        List of 6 BGR images.
+    """
+    names = [
+        "step01_face_and_roi.png",
+        "step02_forehead_roi.png",
+        "step03_clahe_enhanced.png",
+        "step04_intensity_graph.png",
+        "step05_gradient_graph.png",
+        "step06_final_result.png",
+    ]
+    for name, img in zip(names, step_images):
+        path = output_dir / name
+        try:
+            cv2.imwrite(str(path), img)
+        except OSError as exc:
+            warnings.warn(f"Could not save {path}: {exc}")
+
+
+def _serialize_for_json(value: object) -> object:
+    """Convert NumPy types to JSON-serializable Python types.
+
+    Parameters
+    ----------
+    value : object
+        Value to serialize.
+
+    Returns
+    -------
+    object
+        JSON-serializable equivalent.
+    """
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, (np.integer, np.int64, np.int32)):
+        return int(value)
+    if isinstance(value, (np.floating, np.float64, np.float32)):
+        return float(value)
+    if isinstance(value, tuple):
+        return list(value)
+    return value
+
+
+def _save_data_json(output_dir: Path, steps: dict) -> None:
+    """Write raw numerical data to ``data.json``.
+
+    Parameters
+    ----------
+    output_dir : Path
+        Directory where the file will be saved.
+    steps : dict
+        Result dictionary from ``HairlineDetector.detect()``.
+    """
+    keys_to_save = [
+        "roi_coords",
+        "hairline_y",
+        "gradient",
+        "row_intensities",
+        "abs_gradient",
+        "max_gradient_idx",
+        "max_gradient_value",
+        "max_gradient_value_full",
+        "median_gradient",
+        "gradient_ratio",
+        "method",
+        "avg_eyebrow_y",
+        "searchable_rows",
+        "face_rect",
+    ]
+    data = {}
+    for key in keys_to_save:
+        if key in steps:
+            data[key] = _serialize_for_json(steps[key])
+        else:
+            data[key] = None
+
+    path = output_dir / "data.json"
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except OSError as exc:
+        warnings.warn(f"Could not save {path}: {exc}")
+
+
+def _save_profiles_csv(output_dir: Path, steps: dict) -> None:
+    """Write per-row intensity and gradient data to ``profiles.csv``.
+
+    Parameters
+    ----------
+    output_dir : Path
+        Directory where the file will be saved.
+    steps : dict
+        Result dictionary from ``HairlineDetector.detect()``.
+    """
+    row_intensities = steps.get("row_intensities", np.array([]))
+    gradient = steps.get("gradient", np.array([]))
+    abs_gradient = steps.get("abs_gradient", np.array([]))
+
+    path = output_dir / "profiles.csv"
+    try:
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["row_index", "intensity", "gradient", "abs_gradient"])
+            n = len(row_intensities)
+            for i in range(n):
+                writer.writerow([
+                    i,
+                    float(row_intensities[i]),
+                    float(gradient[i]) if i < len(gradient) else "",
+                    float(abs_gradient[i]) if i < len(abs_gradient) else "",
+                ])
+    except OSError as exc:
+        warnings.warn(f"Could not save {path}: {exc}")
+
+
+def _build_summary_text(image_path: Path, face_rect: tuple, steps: dict) -> str:
+    """Build the summary text for the analysis.
+
+    Parameters
+    ----------
+    image_path : Path
+        Path to the input image.
+    face_rect : tuple
+        Face bounding box (x, y, w, h).
+    steps : dict
+        Result dictionary from ``HairlineDetector.detect()``.
+
+    Returns
+    -------
+    str
+        Multi-line summary text.
+    """
+    x_start, x_end, y_start, y_end = steps["roi_coords"]
+    hairline_y = steps["hairline_y"]
+    method = steps["method"]
+    gradient_ratio = steps["gradient_ratio"]
+
+    lines = [
+        f"Image: {image_path.name}",
+        f"Face size: {face_rect[2]}x{face_rect[3]} px",
+        f"Forehead ROI: {x_end - x_start}x{y_end - y_start} px",
+        f"Searchable rows: {steps['searchable_rows']}/{y_end - y_start} (top 75%)",
+        f"Max gradient: {steps['max_gradient_value']:.2f} at row {steps['max_gradient_idx']}",  # noqa: E501
+        f"Median gradient: {steps['median_gradient']:.2f}",
+        f"Ratio: {gradient_ratio:.2f}",
+        f"Result: {method} detection at y={hairline_y}",
+    ]
+    return "\n".join(lines)
+
+
+def _save_summary_txt(output_dir: Path, summary_text: str) -> None:
+    """Write summary text to ``summary.txt``.
+
+    Parameters
+    ----------
+    output_dir : Path
+        Directory where the file will be saved.
+    summary_text : str
+        Text content to write.
+    """
+    path = output_dir / "summary.txt"
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(summary_text)
+            f.write("\n")
+    except OSError as exc:
+        warnings.warn(f"Could not save {path}: {exc}")
+
+
+def process_image(image_path: Path, visualize: bool) -> None:
+    """Process a single image, save all steps to disk, and optionally display them."""
+    print(f"\n{'=' * 60}\nProcessing: {image_path.name}\n{'=' * 60}")
+    img_bgr, img_gray = ImageLoader.load(image_path)
+    img_h, img_w = img_gray.shape[:2]
+    face_rect = FaceDetector().detect(img_gray, (img_h, img_w))
+    model_path = ModelFinder.find()
+    landmarks = LandmarkDetector(model_path).detect(img_gray, face_rect, image_path)
+    steps = HairlineDetector().detect(img_gray, landmarks)
+
+    # Build step images (always, even in headless mode)
+    step_images = _build_step_images(img_bgr, landmarks, steps)
+
+    # Create output directory and save all files
+    output_dir = _ensure_output_dir(image_path)
+    _save_step_images(output_dir, step_images)
+    _save_data_json(output_dir, steps)
+    _save_profiles_csv(output_dir, steps)
+
+    summary_text = _build_summary_text(image_path, face_rect, steps)
+    _save_summary_txt(output_dir, summary_text)
+
+    # Print summary to console
+    print(f"\n  {summary_text.replace(chr(10), chr(10) + '  ')}")
+    print(f"\n  Output saved to: {output_dir.resolve()}")
+
+    # Display windows only if requested
+    if visualize:
+        titles = [
+            "Step 1: Detect face & eyebrows",
+            "Step 2: Extract forehead ROI",
+            "Step 3: CLAHE enhancement",
+            "Step 4: Average intensity per row",
+            "Step 5: Vertical gradient magnitude",
+            "Step 6: Detected hairline",
+        ]
+        for title, img in zip(titles, step_images):
+            _show_step(title, img)
 
 
 def main() -> None:
