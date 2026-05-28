@@ -477,7 +477,7 @@ class VisagismCalculator:
             deviations.append(
                 self._compute_deviation(
                     "length_from_width",
-                    self._measurements.face_width,
+                    self._measurements.total_face_height,
                     block.ideal_length_from_width,
                 )
             )
@@ -614,7 +614,7 @@ class VisagismCalculator:
             deviations.append(
                 self._compute_deviation(
                     "length_from_width",
-                    self._measurements.face_width,
+                    self._measurements.total_face_height,
                     consensus.ideal_length_from_width,
                 )
             )
