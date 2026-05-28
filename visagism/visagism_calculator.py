@@ -52,6 +52,7 @@ class FacialMeasurements:
     lower_third: float
     middle_third: float
     upper_third: Optional[float] = None
+    hairline_fallback_used: bool = False
 
     @property
     def total_face_height(self) -> Optional[float]:
@@ -170,10 +171,15 @@ class VisagismAnalysis:
     block_3_nose_width : ReferenceBlock
         Reference block derived from nose width.
     consensus : ConsensusResult
-        Consensus ideal values and deviations.
+        Consensus ideal values and deviations (deprecated, kept for
+        backward compatibility).
     all_flagged_deviations : list of DeviationResult
-        Flattened list of all deviations flagged across blocks and
-        consensus.
+        Flattened list of all deviations flagged across the best
+        reference block.
+    best_block : ReferenceBlock
+        The reference block with the minimum total absolute deviation.
+    best_block_name : str
+        Human-readable name of the best reference block.
     """
 
     measurements: FacialMeasurements
@@ -182,6 +188,8 @@ class VisagismAnalysis:
     block_3_nose_width: ReferenceBlock
     consensus: ConsensusResult
     all_flagged_deviations: List[DeviationResult] = field(default_factory=list)
+    best_block: ReferenceBlock = field(default=None)  # type: ignore[assignment]
+    best_block_name: str = ""
 
 
 class VisagismCalculator:
@@ -210,6 +218,9 @@ class VisagismCalculator:
         Middle facial third in pixels. Must be positive.
     upper_third : float or None
         Upper facial third in pixels. Must be positive if provided.
+    hairline_fallback_used : bool
+        Whether the upper third was estimated from the middle third
+        because no hairline was detected.
 
     Raises
     ------
@@ -227,6 +238,7 @@ class VisagismCalculator:
         lower_third: float,
         middle_third: float,
         upper_third: Optional[float] = None,
+        hairline_fallback_used: bool = False,
     ) -> None:
         self._measurements = FacialMeasurements(
             eye_width=eye_width,
@@ -237,6 +249,7 @@ class VisagismCalculator:
             lower_third=lower_third,
             middle_third=middle_third,
             upper_third=upper_third,
+            hairline_fallback_used=hairline_fallback_used,
         )
         self._validate_measurements()
 
@@ -275,14 +288,15 @@ class VisagismCalculator:
     def calculate(self) -> VisagismAnalysis:
         """Orchestrate the full visagism analysis.
 
-        Computes the three reference blocks, derives consensus values,
-        calculates deviations, and collects all flagged deviations.
+        Computes the three reference blocks, identifies the block with
+        the smallest total absolute deviation (the "best" block), and
+        collects flagged deviations from that block only.
 
         Returns
         -------
         VisagismAnalysis
             Complete analysis result containing measurements, reference
-            blocks, consensus, and flagged deviations.
+            blocks, consensus, best block, and flagged deviations.
         """
         block_1 = self._compute_block_1()
         block_2 = self._compute_block_2()
@@ -291,14 +305,11 @@ class VisagismCalculator:
         blocks = [block_1, block_2, block_3]
         consensus = self._compute_consensus(blocks)
 
-        all_flagged: List[DeviationResult] = []
-        for block in blocks:
-            for dev in block.deviations:
-                if dev.is_flagged:
-                    all_flagged.append(dev)
-        for dev in consensus.deviations:
-            if dev.is_flagged:
-                all_flagged.append(dev)
+        best_block = self._select_best_block(blocks)
+
+        all_flagged: List[DeviationResult] = [
+            dev for dev in best_block.deviations if dev.is_flagged
+        ]
 
         return VisagismAnalysis(
             measurements=self._measurements,
@@ -307,6 +318,8 @@ class VisagismCalculator:
             block_3_nose_width=block_3,
             consensus=consensus,
             all_flagged_deviations=all_flagged,
+            best_block=best_block,
+            best_block_name=best_block.block_name,
         )
 
     def _compute_block_1(self) -> ReferenceBlock:
@@ -598,6 +611,39 @@ class VisagismCalculator:
 
         return deviations
 
+    @staticmethod
+    def _select_best_block(blocks: List[ReferenceBlock]) -> ReferenceBlock:
+        """Select the reference block with the smallest total deviation.
+
+        The total deviation is the sum of absolute deviation percentages
+        for all deviations that have a computed percentage (i.e. where
+        the actual measurement was available).
+
+        Parameters
+        ----------
+        blocks : list of ReferenceBlock
+            The three computed reference blocks.
+
+        Returns
+        -------
+        ReferenceBlock
+            The block with the minimum total absolute deviation.
+        """
+        best = blocks[0]
+        best_score = float("inf")
+
+        for block in blocks:
+            total = sum(
+                abs(dev.deviation_percent)
+                for dev in block.deviations
+                if dev.deviation_percent is not None
+            )
+            if total < best_score:
+                best_score = total
+                best = block
+
+        return best
+
     @classmethod
     def from_landmarks(cls, landmarks: FacialLandmarks) -> VisagismCalculator:
         """Create a calculator from 68-point facial landmarks.
@@ -655,8 +701,12 @@ class VisagismCalculator:
 
         # Upper third — hairline to eyebrow line (if hairline available)
         upper_third: Optional[float] = None
+        hairline_fallback_used = False
         if landmarks.hairline_y is not None:
             upper_third = abs(avg_eyebrow_y - landmarks.hairline_y)
+        else:
+            upper_third = middle_third
+            hairline_fallback_used = True
 
         return cls(
             eye_width=eye_width,
@@ -667,4 +717,5 @@ class VisagismCalculator:
             lower_third=lower_third,
             middle_third=middle_third,
             upper_third=upper_third,
+            hairline_fallback_used=hairline_fallback_used,
         )

@@ -341,6 +341,64 @@ class TestConsensusComputation:
         assert consensus.ideal_length_from_width is None
 
 
+class TestBestBlockSelection:
+    """Test suite for best block selection logic."""
+
+    def test_select_best_block_chooses_minimum_deviation(self) -> None:
+        """The block with the smallest total absolute deviation is selected."""
+        calc = VisagismCalculator(
+            eye_width=10.0,
+            inter_ocular_distance=20.0,
+            nose_width=15.0,
+            mouth_width=30.0,
+            face_width=100.0,
+            lower_third=50.0,
+            middle_third=60.0,
+            upper_third=40.0,
+        )
+        block_1 = calc._compute_block_1()
+        block_2 = calc._compute_block_2()
+        block_3 = calc._compute_block_3()
+
+        best = VisagismCalculator._select_best_block([block_1, block_2, block_3])
+
+        # Compute expected best block manually
+        scores = []
+        for block in [block_1, block_2, block_3]:
+            total = sum(
+                abs(dev.deviation_percent)
+                for dev in block.deviations
+                if dev.deviation_percent is not None
+            )
+            scores.append(total)
+
+        min_idx = scores.index(min(scores))
+        expected = [block_1, block_2, block_3][min_idx]
+        assert best.block_name == expected.block_name
+
+    def test_best_block_fields_populated(self) -> None:
+        """calculate() populates best_block and best_block_name correctly."""
+        calc = VisagismCalculator(
+            eye_width=10.0,
+            inter_ocular_distance=20.0,
+            nose_width=15.0,
+            mouth_width=30.0,
+            face_width=100.0,
+            lower_third=50.0,
+            middle_third=60.0,
+            upper_third=40.0,
+        )
+        result = calc.calculate()
+
+        assert result.best_block is not None
+        assert result.best_block_name == result.best_block.block_name
+        assert result.best_block_name in [
+            "Eye Width Reference",
+            "Inter-Ocular Distance Reference",
+            "Nose Width Reference",
+        ]
+
+
 class TestFullAnalysis:
     """Test suite for end-to-end analysis integration."""
 
@@ -365,9 +423,12 @@ class TestFullAnalysis:
         assert isinstance(result.block_3_nose_width, ReferenceBlock)
         assert isinstance(result.consensus, ConsensusResult)
         assert isinstance(result.all_flagged_deviations, list)
+        assert isinstance(result.best_block, ReferenceBlock)
+        assert isinstance(result.best_block_name, str)
+        assert result.best_block_name != ""
 
-    def test_calculate_collects_flagged_deviations(self) -> None:
-        """All flagged deviations from blocks and consensus are collected."""
+    def test_calculate_collects_flagged_deviations_from_best_block(self) -> None:
+        """Flagged deviations are collected only from the best block."""
         # Use measurements that will produce large deviations
         calc = VisagismCalculator(
             eye_width=5.0,
@@ -381,8 +442,10 @@ class TestFullAnalysis:
         )
         result = calc.calculate()
 
-        # With such small values, many deviations should be flagged
-        assert len(result.all_flagged_deviations) > 0
+        # With such small values, the best block should still have some flagged
+        # deviations, but only from the best block
+        best_flagged = [d for d in result.best_block.deviations if d.is_flagged]
+        assert result.all_flagged_deviations == best_flagged
 
     def test_calculate_without_upper_third(self) -> None:
         """Analysis works when upper_third is None."""
@@ -510,11 +573,30 @@ class TestFromLandmarks:
         assert calc._measurements.upper_third > 0
 
     def test_from_landmarks_without_hairline(self) -> None:
-        """from_landmarks sets upper_third to None when hairline is absent."""
+        """from_landmarks uses fallback when hairline is absent."""
         landmarks = self._make_landmarks(hairline_y=None)
         calc = VisagismCalculator.from_landmarks(landmarks)
 
-        assert calc._measurements.upper_third is None
+        assert calc._measurements.upper_third == calc._measurements.middle_third
+        assert calc._measurements.hairline_fallback_used is True
+
+    def test_from_landmarks_with_none_hairline_uses_fallback(self) -> None:
+        """When hairline_y is None, upper_third equals middle_third and
+        fallback flag is set."""
+        landmarks = self._make_landmarks(hairline_y=None)
+        calc = VisagismCalculator.from_landmarks(landmarks)
+
+        assert calc._measurements.upper_third == calc._measurements.middle_third
+        assert calc._measurements.hairline_fallback_used is True
+
+    def test_from_landmarks_with_hairline_no_fallback(self) -> None:
+        """When hairline_y is present, fallback flag is False."""
+        landmarks = self._make_landmarks(hairline_y=80)
+        calc = VisagismCalculator.from_landmarks(landmarks)
+
+        assert calc._measurements.hairline_fallback_used is False
+        assert calc._measurements.upper_third is not None
+        assert calc._measurements.upper_third > 0
 
     def test_from_landmarks_rejects_wrong_count(self) -> None:
         """AnalysisError is raised when landmark count is not 68."""
