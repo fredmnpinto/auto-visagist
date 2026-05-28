@@ -1,10 +1,11 @@
 # Functional Specification: Facial Visagism Analysis System
 
-> **Version**: 1.4.1 | **Date**: 2026-05-28 | **Author**: Documenter Agent | **Status**: Draft
+> **Version**: 1.4.2 | **Date**: 2026-05-28 | **Author**: Documenter Agent | **Status**: Draft
 
 ## Change Log
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.4.2 | 2026-05-28 | Documenter Agent | Added FR-015 (Hairline Detection Diagnostic Tool, Could priority, Implemented). Enhanced demo script `scripts/demo_hairline_steps.py` to always save intermediate hairline detection data to disk: 6 PNG step images, data.json, profiles.csv, and summary.txt. Works in headless mode with graceful error handling. Updated Architecture (§5.1), Interfaces (§6.1), and Testing Strategy (§7.4) to reflect diagnostic tooling. |
 | 1.4.1 | 2026-05-28 | Documenter Agent | Refined FR-013 (Hairline Detection): narrowed forehead ROI from full face-width to a 3% face-width centered strip (HAIRLINE_ROI_WIDTH_RATIO = 0.03). Updated acceptance criteria and module description. Status changed from Draft to Implemented. |
 | 1.4.0 | 2026-05-07 | Documenter Agent | Added FR-013 (Hairline Detection via Edge Detection) to support superior third calculation in FR-005. HairlineDetector uses Canny edge detection and horizontal line scanning above the eyebrows to estimate the hairline position. |
 | 1.3.0 | 2026-05-07 | Documenter Agent | Implemented core detection pipeline: FR-001 (Face Photo Input), FR-002 (Face Detection), FR-003 (Facial Landmark Detection), FR-004 (Landmark Visualization), FR-012 (Error Handling). All Must-priority requirements for input/detection/visualization complete. |
@@ -98,6 +99,7 @@ A working prototype that:
 | FR-011 | Analysis Report Generation | The system shall generate a text-based or visual report containing: detected face shape, calculated proportions with golden ratio comparison | Must | Assignment Spec §2.4 | FR-006, FR-007 | Draft |
 | FR-012 | Error Handling | The system shall gracefully handle errors including: no face detected, multiple faces detected (use largest), poor image quality, non-frontal poses with user warning | Must | Assignment Spec §2.5 | FR-002 | Implemented |
 | FR-013 | Hairline Detection via Edge Detection | The system shall estimate the hairline position using edge detection on the forehead region to support facial third measurements | Must | Visagism Methodology | FR-003 | Implemented |
+| FR-015 | Hairline Detection Diagnostic Tool | The system shall provide a diagnostic script that visualizes and saves intermediate hairline detection data to disk for debugging and validation of FR-013 | Could | Development Team | FR-013 | Implemented |
 
 ### Detailed Acceptance Criteria
 
@@ -250,6 +252,21 @@ A working prototype that:
 - [x] Provide the estimated hairline coordinate as input to FR-005 superior third calculation
 **Status**: Implemented
 
+#### FR-015: Hairline Detection Diagnostic Tool
+**Description**: The system shall provide a diagnostic script (`scripts/demo_hairline_steps.py`) that visualizes and saves intermediate hairline detection data to disk for debugging and validation of FR-013. The script operates in headless mode by default and produces structured outputs for manual inspection.
+**Priority**: Could
+**Source**: Development Team (diagnostic support for FR-013)
+**Dependencies**: FR-013
+**Acceptance Criteria**:
+- [x] Save 6 PNG step images to `output/<image_stem>/`: face & ROI overlay, forehead ROI, CLAHE enhanced, intensity graph, gradient graph, final result with dashed hairline
+- [x] Save `data.json` containing raw numerical data: `roi_coords`, `hairline_y`, `gradient`, `row_intensities`, `abs_gradient`, `max_gradient_idx`, `max_gradient_value`, `median_gradient`, `gradient_ratio`, `method`, `avg_eyebrow_y`, `searchable_rows`, `face_rect`
+- [x] Save `profiles.csv` with row-by-row intensity and gradient data (columns: `row_index`, `intensity`, `gradient`, `abs_gradient`)
+- [x] Save `summary.txt` with a human-readable text summary of the analysis (face size, ROI dimensions, searchable rows, max gradient, median gradient, ratio, result method and y-coordinate)
+- [x] Operate in headless mode without requiring `--visualize` flag; display OpenCV windows only when `--visualize` is explicitly passed
+- [x] Graceful error handling for file I/O failures (warnings instead of crashes) and empty ROI (displays "Empty ROI" placeholder image)
+- [x] Create output directory automatically (`output/<image_stem>/`) with `mkdir(parents=True, exist_ok=True)`
+**Status**: Implemented
+
 ---
 
 ## 4. Non-Functional Requirements
@@ -282,6 +299,7 @@ A working prototype that:
 | Visagism Analyzer | Compare proportions to golden ratio | Identify deviations and generate analysis |
 | Visualization Module | Display landmarks and measurements | Overlay points/lines on image, create output visualization |
 | Report Generator | Create analysis reports | Compile results into text/visual report format |
+| Diagnostic / Demo Scripts | Support debugging and validation of hairline detection | Save intermediate step images, raw numerical data (JSON), per-row CSV profiles, and text summaries to `output/<image_stem>/` for manual inspection and algorithm tuning |
 
 ### 5.2 Data Models
 
@@ -331,11 +349,16 @@ A working prototype that:
 
 ### 6.1 User Interface
 - **Primary Interface**: Command-line interface (CLI)
+- **Diagnostic Scripts**: `scripts/demo_hairline_steps.py` for step-by-step hairline detection visualization and disk output; `scripts/diagnose_hairline.py` for batch diagnostic figures
 - **Usage**: `python visagism.py --input <image_path> [--output <output_dir>] [--visualize] [--save-viz] [--hairline]`
+- **Demo Script Usage**: `python scripts/demo_hairline_steps.py --input <image_path> [--visualize]`
 - **Example**:
   ```bash
   # Process single image
   python visagism.py --input photos/face.jpg --visualize --hairline
+
+  # Run hairline diagnostic (headless, saves to output/<image_stem>/)
+  python scripts/demo_hairline_steps.py --input photos/face.jpg
   ```
 
 ### 6.2 Input Format
@@ -351,6 +374,11 @@ A working prototype that:
 - **Console Output**: Analysis summary with face shape and golden ratio comparisons
 - **Report File**: `analysis_report_[timestamp].txt` containing full analysis
 - **Visualization File**: `landmarks_[original_filename].jpg` with overlaid landmarks
+- **Diagnostic Outputs** (from `scripts/demo_hairline_steps.py`):
+  - `output/<image_stem>/step01_face_and_roi.png` through `step06_final_result.png`
+  - `output/<image_stem>/data.json` — raw numerical hairline detection data
+  - `output/<image_stem>/profiles.csv` — per-row intensity and gradient profiles
+  - `output/<image_stem>/summary.txt` — human-readable text summary
 
 ### 6.4 Error Handling
 - All errors displayed in clear, user-friendly messages
@@ -391,6 +419,7 @@ A working prototype that:
 - **Pre-demo checklist**: Verify on 5 test images before presentation
 - **Fallback images**: Have 3 guaranteed-working images for live demo
 - **Performance**: Verify processing time <5 seconds per image
+- **Diagnostic validation**: Use `scripts/demo_hairline_steps.py` to inspect intermediate hairline detection outputs (step images, `data.json`, `profiles.csv`, `summary.txt`) and confirm algorithm behaviour on test images
 
 ---
 
