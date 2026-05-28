@@ -42,6 +42,7 @@ def fake_steps() -> dict:
     """Return a realistic steps dict as produced by HairlineDetector."""
     roi = np.random.randint(0, 255, (50, 1), dtype=np.uint8)
     context = np.random.randint(0, 255, (50, 100), dtype=np.uint8)
+    closed = np.random.randint(0, 255, (50, 100), dtype=np.uint8)
     edges = np.zeros((50, 100), dtype=np.uint8)
     edges[20, 50] = 255  # one edge pixel
     center_column = edges[:, 50]
@@ -54,6 +55,8 @@ def fake_steps() -> dict:
         "roi_raw": roi,
         "canny_context_coords": (50, 150, 30, 80),
         "canny_context_raw": context,
+        "closed_context": closed,
+        "close_ksize": 3,
         "canny_edge_map": edges,
         "center_column": center_column,
         "first_edge_idx": first_edge_idx,
@@ -77,6 +80,8 @@ def fake_steps_empty_roi() -> dict:
         "roi_raw": np.array([]),
         "canny_context_coords": (50, 150, 80, 80),
         "canny_context_raw": np.array([]),
+        "closed_context": np.array([]),
+        "close_ksize": 0,
         "canny_edge_map": np.array([]),
         "center_column": np.array([]),
         "first_edge_idx": -1,
@@ -229,18 +234,19 @@ class TestProcessImageSaves:
         "step01_face_and_roi.png",
         "step02_forehead_roi.png",
         "step03_canny_context.png",
-        "step04_canny_edge_map.png",
-        "step05_center_column_scan.png",
-        "step06_final_result.png",
+        "step04_closed_context.png",
+        "step05_canny_edge_map.png",
+        "step06_center_column_scan.png",
+        "step07_final_result.png",
         "data.json",
         "profiles.csv",
         "summary.txt",
     ]
 
-    def test_all_nine_files_exist(
+    def test_all_ten_files_exist(
         self, fake_image_path: Path, mock_pipeline: MagicMock, tmp_path: Path,
     ) -> None:
-        """All 9 output files should be created."""
+        """All 10 output files should be created."""
         # Change working directory so output/ is inside tmp_path
         import os
         original_cwd = os.getcwd()
@@ -282,7 +288,7 @@ class TestProcessImageSaves:
                     with patch.object(demo.cv2, "destroyWindow"):
                         with patch.object(demo.cv2, "namedWindow"):
                             demo.process_image(fake_image_path, visualize=True)
-                            assert mock_imshow.call_count == 6
+                            assert mock_imshow.call_count == 7
         finally:
             os.chdir(original_cwd)
 

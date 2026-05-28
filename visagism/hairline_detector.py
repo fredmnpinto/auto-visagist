@@ -17,6 +17,7 @@ import numpy as np
 from visagism.constants import (
     HAIRLINE_CANNY_HIGH,
     HAIRLINE_CANNY_LOW,
+    HAIRLINE_CLOSE_KSIZE,
     HAIRLINE_GAUSSIAN_KSIZE,
     HAIRLINE_ROI_UPWARD_EXPANSION,
 )
@@ -33,10 +34,11 @@ class HairlineDetector:
        spanning from above the face top to just above the eyebrow line
        (excluding the bottom 25 % of the forehead).
     3. Extracting a wider forehead context (full face width) for Canny.
-    4. Applying Gaussian blur and Canny edge detection to the context.
-    5. Sampling the centre column of the resulting edge map.
-    6. Scanning bottom-to-top for the first edge pixel.
-    7. Falling back to a geometric estimate if no edge is found.
+    4. Applying Gaussian blur and morphological closing to the context.
+    5. Running Canny edge detection on the closed image.
+    6. Sampling the centre column of the resulting edge map.
+    7. Scanning bottom-to-top for the first edge pixel.
+    8. Falling back to a geometric estimate if no edge is found.
     """
 
     def _compute_roi(
@@ -118,6 +120,10 @@ class HairlineDetector:
         self,
         img_gray: ImageArray,
         landmarks: FacialLandmarks,
+        canny_low: int | None = None,
+        canny_high: int | None = None,
+        close_ksize: int | None = None,
+        gaussian_ksize: int | None = None,
     ) -> dict:
         """Estimate hairline y-coordinate using Canny edge detection.
 
@@ -132,11 +138,23 @@ class HairlineDetector:
         landmarks : FacialLandmarks
             Detected landmarks with ``face_rect``, ``landmarks_by_region``,
             and optionally ``hairline_y``.
+        canny_low : int or None, optional
+            Lower threshold for Canny edge detection. If None, uses
+            ``HAIRLINE_CANNY_LOW``.
+        canny_high : int or None, optional
+            Upper threshold for Canny edge detection. If None, uses
+            ``HAIRLINE_CANNY_HIGH``.
+        close_ksize : int or None, optional
+            Kernel size for morphological closing. If None, uses
+            ``HAIRLINE_CLOSE_KSIZE``.
+        gaussian_ksize : int or None, optional
+            Kernel size for Gaussian blur. If None, uses
+            ``HAIRLINE_GAUSSIAN_KSIZE``.
 
         Returns
         -------
         dict
-            Dictionary with 16 keys:
+            Dictionary with 18 keys:
             - ``"hairline_y"``: Detected hairline y-coordinate (int)
             - ``"method"``: Detection method (str, ``"canny"`` or ``"fallback"``)
             - ``"roi_coords"``: Tuple (x_start, x_end, y_start, y_end)
@@ -144,6 +162,11 @@ class HairlineDetector:
             - ``"canny_context_coords"``: Tuple (ctx_x_start, ctx_x_end,
               ctx_y_start, ctx_y_end)
             - ``"canny_context_raw"``: Raw Canny context (np.ndarray)
+            - ``"closed_context"``: Image after Gaussian blur and morphological
+              closing (np.ndarray).  Identical to ``"canny_context_raw"`` when
+              closing is skipped.
+            - ``"close_ksize"``: Morphological closing kernel size (int).  Zero
+              means closing was skipped.
             - ``"canny_edge_map"``: Canny edge map (np.ndarray)
             - ``"center_column"``: Sampled centre column from edge map
               (np.ndarray)
@@ -158,6 +181,22 @@ class HairlineDetector:
             - ``"face_rect"``: Face bounding box tuple
             - ``"searchable_rows"``: Number of rows scanned (int)
         """
+        # Use provided parameters or fall back to constants
+        canny_low_val = (
+            canny_low if canny_low is not None else HAIRLINE_CANNY_LOW
+        )
+        canny_high_val = (
+            canny_high if canny_high is not None else HAIRLINE_CANNY_HIGH
+        )
+        close_ksize_val = (
+            close_ksize if close_ksize is not None else HAIRLINE_CLOSE_KSIZE
+        )
+        gaussian_ksize_val = (
+            gaussian_ksize
+            if gaussian_ksize is not None
+            else HAIRLINE_GAUSSIAN_KSIZE
+        )
+
         (
             avg_eyebrow_y,
             x_start,
@@ -199,26 +238,37 @@ class HairlineDetector:
                     ctx_y_end,
                 ),
                 "canny_context_raw": context,
+                "closed_context": context,
+                "close_ksize": 0,
                 "canny_edge_map": np.array([]),
                 "center_column": np.array([]),
                 "first_edge_idx": -1,
                 "edge_pixels_count": 0,
-                "gaussian_ksize": HAIRLINE_GAUSSIAN_KSIZE,
-                "canny_low": HAIRLINE_CANNY_LOW,
-                "canny_high": HAIRLINE_CANNY_HIGH,
+                "gaussian_ksize": gaussian_ksize_val,
+                "canny_low": canny_low_val,
+                "canny_high": canny_high_val,
                 "avg_eyebrow_y": avg_eyebrow_y,
                 "face_rect": face_rect,
                 "searchable_rows": searchable_rows,
             }
 
         # Gaussian blur
-        ksize = HAIRLINE_GAUSSIAN_KSIZE
+        ksize = gaussian_ksize_val
         if ksize % 2 == 0:
             ksize += 1
         blurred = cv2.GaussianBlur(context, (ksize, ksize), 0)
 
+        # Morphological closing
+        if close_ksize_val > 0:
+            close_kernel = cv2.getStructuringElement(
+                cv2.MORPH_RECT, (close_ksize_val, close_ksize_val)
+            )
+            closed = cv2.morphologyEx(blurred, cv2.MORPH_CLOSE, close_kernel)
+        else:
+            closed = blurred
+
         # Canny edge detection
-        edges = cv2.Canny(blurred, HAIRLINE_CANNY_LOW, HAIRLINE_CANNY_HIGH)
+        edges = cv2.Canny(closed, canny_low_val, canny_high_val)
 
         # Sample centre column from edge map
         face_center_x = fx + fw // 2
@@ -258,13 +308,15 @@ class HairlineDetector:
                 ctx_y_end,
             ),
             "canny_context_raw": context,
+            "closed_context": closed,
+            "close_ksize": close_ksize_val,
             "canny_edge_map": edges,
             "center_column": center_column,
             "first_edge_idx": first_edge_idx,
             "edge_pixels_count": edge_pixels_count,
             "gaussian_ksize": ksize,
-            "canny_low": HAIRLINE_CANNY_LOW,
-            "canny_high": HAIRLINE_CANNY_HIGH,
+            "canny_low": canny_low_val,
+            "canny_high": canny_high_val,
             "avg_eyebrow_y": avg_eyebrow_y,
             "face_rect": face_rect,
             "searchable_rows": searchable_rows,

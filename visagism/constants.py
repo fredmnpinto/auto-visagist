@@ -115,6 +115,7 @@ HAIRLINE_ROI_UPWARD_EXPANSION: float = 0.25
 HAIRLINE_CANNY_LOW: int = 30
 HAIRLINE_CANNY_HIGH: int = 80
 HAIRLINE_GAUSSIAN_KSIZE: int = 5
+HAIRLINE_CLOSE_KSIZE: int = 3
 
 # Hairline visualization — dashed line style (BGR color)
 HAIRLINE_COLOR: tuple[int, int, int] = (0, 255, 255)  # Yellow

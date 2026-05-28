@@ -174,6 +174,7 @@ class TestHairlineDetector:
         expected_keys = {
             "hairline_y", "method", "roi_coords", "roi_raw",
             "canny_context_coords", "canny_context_raw", "canny_edge_map",
+            "closed_context", "close_ksize",
             "center_column", "first_edge_idx", "edge_pixels_count",
             "gaussian_ksize", "canny_low", "canny_high",
             "avg_eyebrow_y", "face_rect", "searchable_rows",
@@ -236,13 +237,14 @@ class TestHairlineDetector:
     EXPECTED_KEYS = {
         "hairline_y", "method", "roi_coords", "roi_raw",
         "canny_context_coords", "canny_context_raw", "canny_edge_map",
+        "closed_context", "close_ksize",
         "center_column", "first_edge_idx", "edge_pixels_count",
         "gaussian_ksize", "canny_low", "canny_high",
         "avg_eyebrow_y", "face_rect", "searchable_rows",
     }
 
-    def test_detect_returns_exactly_16_keys_fallback(self, sample_landmarks) -> None:
-        """Fallback path must return all 16 keys."""
+    def test_detect_returns_exactly_18_keys_fallback(self, sample_landmarks) -> None:
+        """Fallback path must return all 18 keys."""
         detector = HairlineDetector()
         img_gray = np.full((400, 400), 128, dtype=np.uint8)
 
@@ -250,10 +252,10 @@ class TestHairlineDetector:
             result = detector.detect(img_gray, sample_landmarks)
 
         assert set(result.keys()) == self.EXPECTED_KEYS
-        assert len(result) == 16
+        assert len(result) == 18
 
-    def test_detect_returns_exactly_16_keys_invalid_roi(self) -> None:
-        """Invalid ROI path must return all 16 keys."""
+    def test_detect_returns_exactly_18_keys_invalid_roi(self) -> None:
+        """Invalid ROI path must return all 18 keys."""
         detector = HairlineDetector()
         from pathlib import Path
         from visagism.constants import REGION_INDICES
@@ -277,10 +279,10 @@ class TestHairlineDetector:
 
         result = detector.detect(img_gray, landmarks)
         assert set(result.keys()) == self.EXPECTED_KEYS
-        assert len(result) == 16
+        assert len(result) == 18
 
-    def test_detect_returns_exactly_16_keys_canny(self) -> None:
-        """Canny-detection path must return all 16 keys."""
+    def test_detect_returns_exactly_18_keys_canny(self) -> None:
+        """Canny-detection path must return all 18 keys."""
         detector = HairlineDetector()
         from pathlib import Path
         from visagism.constants import REGION_INDICES
@@ -308,7 +310,7 @@ class TestHairlineDetector:
 
         result = detector.detect(img_gray, landmarks)
         assert set(result.keys()) == self.EXPECTED_KEYS
-        assert len(result) == 16
+        assert len(result) == 18
 
     def test_fallback_dict_includes_canny_keys(self, sample_landmarks) -> None:
         """Fallback responses must contain Canny-specific keys."""
@@ -434,3 +436,249 @@ class TestHairlineDetector:
         assert y_end == 125
         # y_start should be 50 - 62 = -12, clamped to 0
         assert y_start == 0
+
+    def test_closing_applied_when_ksize_positive(self) -> None:
+        """Closing must be applied when HAIRLINE_CLOSE_KSIZE > 0."""
+        detector = HairlineDetector()
+
+        from pathlib import Path
+        from visagism.constants import HAIRLINE_CLOSE_KSIZE, REGION_INDICES
+
+        landmarks_68 = [(0, 0)] * 68
+        landmarks_68[33] = (150, 200)
+
+        for idx in REGION_INDICES["left_eyebrow"] + REGION_INDICES["right_eyebrow"]:
+            landmarks_68[idx] = (100, 150)
+
+        landmarks_by_region: LandmarkRegions = {
+            name: [landmarks_68[i] for i in indices]
+            for name, indices in REGION_INDICES.items()
+        }
+
+        landmarks = FacialLandmarks(
+            image_path=Path("/fake/test.jpg"),
+            face_rect=(50, 50, 200, 250),
+            landmarks_68=landmarks_68,
+            landmarks_by_region=landmarks_by_region,
+        )
+
+        # Create image with a strong horizontal edge at y=80
+        img_gray = np.zeros((400, 400), dtype=np.uint8)
+        img_gray[:] = 128
+        img_gray[0:80, 50:250] = 0
+        img_gray[80:125, 50:250] = 255
+
+        result = detector.detect(img_gray, landmarks)
+
+        assert result["close_ksize"] == HAIRLINE_CLOSE_KSIZE
+        assert result["close_ksize"] > 0
+        assert "closed_context" in result
+        assert result["closed_context"].shape == result["canny_context_raw"].shape
+
+    def test_closing_skipped_when_ksize_zero(self, monkeypatch) -> None:
+        """Closing must be skipped when HAIRLINE_CLOSE_KSIZE = 0."""
+        detector = HairlineDetector()
+
+        from pathlib import Path
+        from visagism import hairline_detector
+        from visagism.constants import REGION_INDICES
+
+        # Temporarily set closing kernel size to 0 in the module where it is used
+        monkeypatch.setattr(hairline_detector, "HAIRLINE_CLOSE_KSIZE", 0)
+
+        landmarks_68 = [(0, 0)] * 68
+        landmarks_68[33] = (150, 200)
+
+        for idx in REGION_INDICES["left_eyebrow"] + REGION_INDICES["right_eyebrow"]:
+            landmarks_68[idx] = (100, 150)
+
+        landmarks_by_region: LandmarkRegions = {
+            name: [landmarks_68[i] for i in indices]
+            for name, indices in REGION_INDICES.items()
+        }
+
+        landmarks = FacialLandmarks(
+            image_path=Path("/fake/test.jpg"),
+            face_rect=(50, 50, 200, 250),
+            landmarks_68=landmarks_68,
+            landmarks_by_region=landmarks_by_region,
+        )
+
+        # Create image with a strong horizontal edge at y=80
+        img_gray = np.zeros((400, 400), dtype=np.uint8)
+        img_gray[:] = 128
+        img_gray[0:80, 50:250] = 0
+        img_gray[80:125, 50:250] = 255
+
+        result = detector.detect(img_gray, landmarks)
+
+        assert result["close_ksize"] == 0
+        assert "closed_context" in result
+        # When closing is skipped, closed_context should be identical to blurred,
+        # which has the same shape as canny_context_raw
+        assert result["closed_context"].shape == result["canny_context_raw"].shape
+
+    # ------------------------------------------------------------------
+    # Optional parameter override tests
+    # ------------------------------------------------------------------
+
+    def test_detect_override_canny_thresholds(self) -> None:
+        """Custom Canny thresholds should be used when provided."""
+        detector = HairlineDetector()
+
+        from pathlib import Path
+        from visagism.constants import REGION_INDICES
+
+        landmarks_68 = [(0, 0)] * 68
+        landmarks_68[33] = (150, 200)
+
+        for idx in REGION_INDICES["left_eyebrow"] + REGION_INDICES["right_eyebrow"]:
+            landmarks_68[idx] = (100, 150)
+
+        landmarks_by_region: LandmarkRegions = {
+            name: [landmarks_68[i] for i in indices]
+            for name, indices in REGION_INDICES.items()
+        }
+
+        landmarks = FacialLandmarks(
+            image_path=Path("/fake/test.jpg"),
+            face_rect=(50, 50, 200, 250),
+            landmarks_68=landmarks_68,
+            landmarks_by_region=landmarks_by_region,
+        )
+
+        img_gray = np.zeros((400, 400), dtype=np.uint8)
+        img_gray[:] = 128
+        img_gray[0:80, 50:250] = 0
+        img_gray[80:125, 50:250] = 255
+
+        result = detector.detect(
+            img_gray, landmarks,
+            canny_low=10, canny_high=20,
+        )
+
+        assert result["canny_low"] == 10
+        assert result["canny_high"] == 20
+
+    def test_detect_override_close_ksize(self) -> None:
+        """Custom close_ksize should be used when provided."""
+        detector = HairlineDetector()
+
+        from pathlib import Path
+        from visagism.constants import REGION_INDICES
+
+        landmarks_68 = [(0, 0)] * 68
+        landmarks_68[33] = (150, 200)
+
+        for idx in REGION_INDICES["left_eyebrow"] + REGION_INDICES["right_eyebrow"]:
+            landmarks_68[idx] = (100, 150)
+
+        landmarks_by_region: LandmarkRegions = {
+            name: [landmarks_68[i] for i in indices]
+            for name, indices in REGION_INDICES.items()
+        }
+
+        landmarks = FacialLandmarks(
+            image_path=Path("/fake/test.jpg"),
+            face_rect=(50, 50, 200, 250),
+            landmarks_68=landmarks_68,
+            landmarks_by_region=landmarks_by_region,
+        )
+
+        img_gray = np.zeros((400, 400), dtype=np.uint8)
+        img_gray[:] = 128
+        img_gray[0:80, 50:250] = 0
+        img_gray[80:125, 50:250] = 255
+
+        result = detector.detect(
+            img_gray, landmarks,
+            close_ksize=7,
+        )
+
+        assert result["close_ksize"] == 7
+
+    def test_detect_override_gaussian_ksize(self) -> None:
+        """Custom gaussian_ksize should be used when provided."""
+        detector = HairlineDetector()
+
+        from pathlib import Path
+        from visagism.constants import REGION_INDICES
+
+        landmarks_68 = [(0, 0)] * 68
+        landmarks_68[33] = (150, 200)
+
+        for idx in REGION_INDICES["left_eyebrow"] + REGION_INDICES["right_eyebrow"]:
+            landmarks_68[idx] = (100, 150)
+
+        landmarks_by_region: LandmarkRegions = {
+            name: [landmarks_68[i] for i in indices]
+            for name, indices in REGION_INDICES.items()
+        }
+
+        landmarks = FacialLandmarks(
+            image_path=Path("/fake/test.jpg"),
+            face_rect=(50, 50, 200, 250),
+            landmarks_68=landmarks_68,
+            landmarks_by_region=landmarks_by_region,
+        )
+
+        img_gray = np.zeros((400, 400), dtype=np.uint8)
+        img_gray[:] = 128
+        img_gray[0:80, 50:250] = 0
+        img_gray[80:125, 50:250] = 255
+
+        result = detector.detect(
+            img_gray, landmarks,
+            gaussian_ksize=9,
+        )
+
+        assert result["gaussian_ksize"] == 9
+
+    def test_detect_none_params_fallback_to_constants(self) -> None:
+        """None parameters should fall back to module constants."""
+        detector = HairlineDetector()
+
+        from pathlib import Path
+        from visagism.constants import (
+            HAIRLINE_CANNY_LOW,
+            HAIRLINE_CANNY_HIGH,
+            HAIRLINE_CLOSE_KSIZE,
+            HAIRLINE_GAUSSIAN_KSIZE,
+            REGION_INDICES,
+        )
+
+        landmarks_68 = [(0, 0)] * 68
+        landmarks_68[33] = (150, 200)
+
+        for idx in REGION_INDICES["left_eyebrow"] + REGION_INDICES["right_eyebrow"]:
+            landmarks_68[idx] = (100, 150)
+
+        landmarks_by_region: LandmarkRegions = {
+            name: [landmarks_68[i] for i in indices]
+            for name, indices in REGION_INDICES.items()
+        }
+
+        landmarks = FacialLandmarks(
+            image_path=Path("/fake/test.jpg"),
+            face_rect=(50, 50, 200, 250),
+            landmarks_68=landmarks_68,
+            landmarks_by_region=landmarks_by_region,
+        )
+
+        img_gray = np.zeros((400, 400), dtype=np.uint8)
+        img_gray[:] = 128
+        img_gray[0:80, 50:250] = 0
+        img_gray[80:125, 50:250] = 255
+
+        result = detector.detect(
+            img_gray, landmarks,
+            canny_low=None,
+            canny_high=None,
+            close_ksize=None,
+            gaussian_ksize=None,
+        )
+
+        assert result["canny_low"] == HAIRLINE_CANNY_LOW
+        assert result["canny_high"] == HAIRLINE_CANNY_HIGH
+        assert result["close_ksize"] == HAIRLINE_CLOSE_KSIZE
+        assert result["gaussian_ksize"] == HAIRLINE_GAUSSIAN_KSIZE

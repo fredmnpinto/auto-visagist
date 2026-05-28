@@ -148,7 +148,7 @@ def _build_step_images(
     landmarks: FacialLandmarks,
     steps: dict,
 ) -> list[np.ndarray]:
-    """Build all 6 step images for the hairline detection pipeline.
+    """Build all 7 step images for the hairline detection pipeline.
 
     Parameters
     ----------
@@ -162,12 +162,13 @@ def _build_step_images(
     Returns
     -------
     list[np.ndarray]
-        List of 6 BGR images, one per step.
+        List of 7 BGR images, one per step.
     """
     x_start, x_end, y_start, y_end = steps["roi_coords"]
     ctx_xs, ctx_xe, ctx_ys, ctx_ye = steps["canny_context_coords"]
     roi = steps["roi_raw"]
     context = steps["canny_context_raw"]
+    closed = steps["closed_context"]
     edges = steps["canny_edge_map"]
     center_column = steps["center_column"]
     hairline_y = steps["hairline_y"]
@@ -218,7 +219,20 @@ def _build_step_images(
         )
     step_images.append(context_bgr)
 
-    # Step 4: Canny edge map
+    # Step 4: Closed context (after morphological closing)
+    if closed.size > 0 and closed.ndim == 2:
+        closed_bgr = cv2.cvtColor(closed, cv2.COLOR_GRAY2BGR)
+    elif closed.size > 0:
+        closed_bgr = closed.copy()
+    else:
+        closed_bgr = np.full((100, 100, 3), 40, dtype=np.uint8)
+        cv2.putText(
+            closed_bgr, "Empty closed context", (10, 50),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1,
+        )
+    step_images.append(closed_bgr)
+
+    # Step 5: Canny edge map
     if edges.size > 0 and edges.ndim == 2:
         edges_bgr = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
         # Highlight center column in red
@@ -234,7 +248,7 @@ def _build_step_images(
         )
     step_images.append(edges_bgr)
 
-    # Step 5: Center column scan
+    # Step 6: Center column scan
     if len(center_column) > 0:
         step_images.append(
                 _draw_bar_chart(
@@ -251,7 +265,7 @@ def _build_step_images(
         )
         step_images.append(empty_chart)
 
-    # Step 6: Final result
+    # Step 7: Final result
     step_images.append(
         _create_step6_image(img_bgr, landmarks, hairline_y, method, edge_count)
     )
@@ -260,22 +274,23 @@ def _build_step_images(
 
 
 def _save_step_images(output_dir: Path, step_images: list[np.ndarray]) -> None:
-    """Save the 6 step images as PNG files.
+    """Save the 7 step images as PNG files.
 
     Parameters
     ----------
     output_dir : Path
         Directory where images will be saved.
     step_images : list[np.ndarray]
-        List of 6 BGR images.
+        List of 7 BGR images.
     """
     names = [
         "step01_face_and_roi.png",
         "step02_forehead_roi.png",
         "step03_canny_context.png",
-        "step04_canny_edge_map.png",
-        "step05_center_column_scan.png",
-        "step06_final_result.png",
+        "step04_closed_context.png",
+        "step05_canny_edge_map.png",
+        "step06_center_column_scan.png",
+        "step07_final_result.png",
     ]
     for name, img in zip(names, step_images):
         path = output_dir / name
@@ -326,6 +341,8 @@ def _save_data_json(output_dir: Path, steps: dict) -> None:
         "roi_raw",
         "canny_context_coords",
         "canny_context_raw",
+        "closed_context",
+        "close_ksize",
         "canny_edge_map",
         "center_column",
         "first_edge_idx",
@@ -408,6 +425,7 @@ def _build_summary_text(image_path: Path, face_rect: tuple, steps: dict) -> str:
         f"Edge pixels in center column: {edge_count}",
         f"Canny thresholds: low={steps['canny_low']}, high={steps['canny_high']}",
         f"Gaussian ksize: {steps['gaussian_ksize']}",
+        f"Closing ksize: {steps['close_ksize']}",
         f"Result: {method} detection at y={hairline_y}",
     ]
     return "\n".join(lines)
@@ -464,9 +482,10 @@ def process_image(image_path: Path, visualize: bool) -> None:
             "Step 1: Detect face & define ROI",
             "Step 2: Extract 1px forehead ROI",
             "Step 3: Canny context",
-            "Step 4: Canny edge map",
-            "Step 5: Center column scan",
-            "Step 6: Detected hairline",
+            "Step 4: Closed context (morphological closing)",
+            "Step 5: Canny edge map",
+            "Step 6: Center column scan",
+            "Step 7: Detected hairline",
         ]
         for title, img in zip(titles, step_images):
             _show_step(title, img)

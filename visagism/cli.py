@@ -23,6 +23,12 @@ class CliConfig:
         Whether to display the visualization window.
     save_viz : bool
         Whether to save the visualization to a file.
+    kernel_size : int
+        Morphological closing kernel size for hairline detection.
+    canny_low : int
+        Lower Canny threshold for hairline detection.
+    canny_high : int
+        Upper Canny threshold for hairline detection.
     """
 
     input_path: Path
@@ -30,6 +36,9 @@ class CliConfig:
     model_path: Path | None = None
     visualize: bool = False
     save_viz: bool = False
+    kernel_size: int = 3
+    canny_low: int = 30
+    canny_high: int = 100
 
 
 class CliParser:
@@ -57,9 +66,10 @@ class CliParser:
                 "classify face shape, and compare against the golden ratio."
             ),
             epilog=(
-                "Example:\n"
+                "Examples:\n"
                 "  python visagism.py --input photo.jpg --visualize\n"
-                "  python visagism.py --input photo.jpg --save-viz --output ./results"
+                "  python visagism.py --input photo.jpg --save-viz --output ./results\n"
+                "  python visagism.py --input photo.jpg --kernel-size 5 --canny-low 20 --canny-high 60"
             ),
             formatter_class=argparse.RawDescriptionHelpFormatter,
         )
@@ -92,6 +102,24 @@ class CliParser:
             action="store_true",
             help="Save landmark visualization to output file",
         )
+        parser.add_argument(
+            "--kernel-size",
+            type=int,
+            default=3,
+            help="Morphological closing kernel size for hairline detection (default: 3, 0=disable)",
+        )
+        parser.add_argument(
+            "--canny-low",
+            type=int,
+            default=30,
+            help="Lower Canny threshold for hairline detection (default: 30)",
+        )
+        parser.add_argument(
+            "--canny-high",
+            type=int,
+            default=100,
+            help="Upper Canny threshold for hairline detection (default: 100)",
+        )
 
         args = parser.parse_args(argv)
 
@@ -101,4 +129,7 @@ class CliParser:
             model_path=Path(args.model) if args.model else None,
             visualize=args.visualize,
             save_viz=args.save_viz,
+            kernel_size=args.kernel_size,
+            canny_low=args.canny_low,
+            canny_high=args.canny_high,
         )

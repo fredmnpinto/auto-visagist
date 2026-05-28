@@ -20,6 +20,9 @@ class TestCliParser:
         assert config.model_path is None
         assert config.visualize is False
         assert config.save_viz is False
+        assert config.kernel_size == 3
+        assert config.canny_low == 30
+        assert config.canny_high == 100
 
     def test_parse_short_form(self) -> None:
         """Test parsing with short form -i."""
@@ -34,12 +37,18 @@ class TestCliParser:
             "--model", "/path/to/model.dat",
             "--visualize",
             "--save-viz",
+            "--kernel-size", "5",
+            "--canny-low", "20",
+            "--canny-high", "60",
         ])
         assert config.input_path == Path("photo.jpg")
         assert config.output_dir == Path("results")
         assert config.model_path == Path("/path/to/model.dat")
         assert config.visualize is True
         assert config.save_viz is True
+        assert config.kernel_size == 5
+        assert config.canny_low == 20
+        assert config.canny_high == 60
 
     def test_parse_output_default(self) -> None:
         """Test that output defaults to 'output'."""
@@ -78,3 +87,30 @@ class TestCliParser:
         """Test that input_path preserves relative paths."""
         config = CliParser.parse(["--input", "../photos/test.png"])
         assert config.input_path == Path("../photos/test.png")
+
+    def test_parse_kernel_size(self) -> None:
+        """Test --kernel-size argument."""
+        config = CliParser.parse(["--input", "photo.jpg", "--kernel-size", "5"])
+        assert config.kernel_size == 5
+
+    def test_parse_kernel_size_zero(self) -> None:
+        """Test --kernel-size 0 disables morphological closing."""
+        config = CliParser.parse(["--input", "photo.jpg", "--kernel-size", "0"])
+        assert config.kernel_size == 0
+
+    def test_parse_canny_low(self) -> None:
+        """Test --canny-low argument."""
+        config = CliParser.parse(["--input", "photo.jpg", "--canny-low", "20"])
+        assert config.canny_low == 20
+
+    def test_parse_canny_high(self) -> None:
+        """Test --canny-high argument."""
+        config = CliParser.parse(["--input", "photo.jpg", "--canny-high", "60"])
+        assert config.canny_high == 60
+
+    def test_parse_hairline_defaults(self) -> None:
+        """Test default values for hairline detection parameters."""
+        config = CliParser.parse(["--input", "photo.jpg"])
+        assert config.kernel_size == 3
+        assert config.canny_low == 30
+        assert config.canny_high == 100
