@@ -1,0 +1,175 @@
+{
+  "summary": {
+    "num_images": 9,
+    "overall_mean_error_px": 61.21,
+    "overall_nme": 0.1576,
+    "mean_hairline_error_px": 49.8
+  },
+  "per_image": [
+    {
+      "image_stem": "woman_10",
+      "mean_error_px": 38.96,
+      "nme": 0.1049,
+      "hairline_error_px": 113,
+      "per_region_means": {
+        "jaw": 54.21,
+        "left_eyebrow": 29.3,
+        "right_eyebrow": 19.33,
+        "nose_bridge": 17.06,
+        "nose_tip": 35.39,
+        "left_eye": 24.23,
+        "right_eye": 19.87,
+        "outer_mouth": 49.35,
+        "inner_mouth": 47.85
+      }
+    },
+    {
+      "image_stem": "woman_11",
+      "mean_error_px": 98.81,
+      "nme": 0.2546,
+      "hairline_error_px": 57,
+      "per_region_means": {
+        "jaw": 118.99,
+        "left_eyebrow": 57.11,
+        "right_eyebrow": 51.1,
+        "nose_bridge": 75.78,
+        "nose_tip": 91.49,
+        "left_eye": 69.56,
+        "right_eye": 67.48,
+        "outer_mouth": 129.16,
+        "inner_mouth": 127.86
+      }
+    },
+    {
+      "image_stem": "woman_12",
+      "mean_error_px": 95.8,
+      "nme": 0.2119,
+      "hairline_error_px": 23,
+      "per_region_means": {
+        "jaw": 119.92,
+        "left_eyebrow": 56.98,
+        "right_eyebrow": 48.42,
+        "nose_bridge": 66.75,
+        "nose_tip": 92.09,
+        "left_eye": 66.69,
+        "right_eye": 62.05,
+        "outer_mouth": 122.53,
+        "inner_mouth": 122.27
+      }
+    },
+    {
+      "image_stem": "woman_13",
+      "mean_error_px": 60.82,
+      "nme": 0.1906,
+      "hairline_error_px": 11,
+      "per_region_means": {
+        "jaw": 69.23,
+        "left_eyebrow": 40.0,
+        "right_eyebrow": 34.67,
+        "nose_bridge": 49.33,
+        "nose_tip": 67.26,
+        "left_eye": 42.44,
+        "right_eye": 39.19,
+        "outer_mouth": 77.94,
+        "inner_mouth": 78.33
+      }
+    },
+    {
+      "image_stem": "woman_6",
+      "mean_error_px": 42.27,
+      "nme": 0.103,
+      "hairline_error_px": 50,
+      "per_region_means": {
+        "jaw": 62.45,
+        "left_eyebrow": 33.51,
+        "right_eyebrow": 39.12,
+        "nose_bridge": 11.71,
+        "nose_tip": 29.33,
+        "left_eye": 20.57,
+        "right_eye": 28.71,
+        "outer_mouth": 48.07,
+        "inner_mouth": 47.95
+      }
+    },
+    {
+      "image_stem": "woman_7",
+      "mean_error_px": 42.36,
+      "nme": 0.0945,
+      "hairline_error_px": 49,
+      "per_region_means": {
+        "jaw": 58.01,
+        "left_eyebrow": 23.74,
+        "right_eyebrow": 25.34,
+        "nose_bridge": 20.78,
+        "nose_tip": 39.39,
+        "left_eye": 20.32,
+        "right_eye": 24.4,
+        "outer_mouth": 54.8,
+        "inner_mouth": 55.33
+      }
+    },
+    {
+      "image_stem": "woman_8",
+      "mean_error_px": 75.95,
+      "nme": 0.1673,
+      "hairline_error_px": 21,
+      "per_region_means": {
+        "jaw": 105.27,
+        "left_eyebrow": 36.75,
+        "right_eyebrow": 37.8,
+        "nose_bridge": 44.76,
+        "nose_tip": 70.88,
+        "left_eye": 45.19,
+        "right_eye": 48.02,
+        "outer_mouth": 95.9,
+        "inner_mouth": 94.81
+      }
+    },
+    {
+      "image_stem": "woman_9",
+      "mean_error_px": 49.88,
+      "nme": 0.1297,
+      "hairline_error_px": 100,
+      "per_region_means": {
+        "jaw": 69.61,
+        "left_eyebrow": 17.38,
+        "right_eyebrow": 31.92,
+        "nose_bridge": 26.01,
+        "nose_tip": 48.52,
+        "left_eye": 23.7,
+        "right_eye": 33.3,
+        "outer_mouth": 64.21,
+        "inner_mouth": 62.8
+      }
+    },
+    {
+      "image_stem": "woman_makeup_1",
+      "mean_error_px": 46.09,
+      "nme": 0.1615,
+      "hairline_error_px": 24,
+      "per_region_means": {
+        "jaw": 62.37,
+        "left_eyebrow": 23.81,
+        "right_eyebrow": 19.76,
+        "nose_bridge": 33.15,
+        "nose_tip": 46.87,
+        "left_eye": 30.49,
+        "right_eye": 24.57,
+        "outer_mouth": 58.03,
+        "inner_mouth": 57.74
+      }
+    }
+  ],
+  "per_region_overall": {
+    "jaw": 80.01,
+    "left_eyebrow": 35.4,
+    "right_eyebrow": 34.16,
+    "nose_bridge": 38.37,
+    "nose_tip": 57.91,
+    "left_eye": 38.13,
+    "right_eye": 38.62,
+    "outer_mouth": 77.78,
+    "inner_mouth": 77.22
+  },
+  "skipped_files": []
+}
