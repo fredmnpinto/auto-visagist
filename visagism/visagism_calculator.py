@@ -115,7 +115,7 @@ class ReferenceBlock:
         Ideal mouth width computed from the reference.
     ideal_length_from_width : float or None
         Ideal face length derived from the actual face width using the
-        golden ratio. Only Block 1 populates this field.
+        golden ratio. All three blocks populate this field.
     deviations : list of DeviationResult
         Deviations of actual measurements from the ideal values.
     """
@@ -365,6 +365,7 @@ class VisagismCalculator:
         - ideal_face_width = inter_ocular_distance * 4
         - ideal_face_height = ideal_face_width * GOLDEN_RATIO
         - ideal_mouth_width = inter_ocular_distance * 1.5
+        - ideal_length_from_width = face_width * GOLDEN_RATIO
 
         Returns
         -------
@@ -372,10 +373,12 @@ class VisagismCalculator:
             Populated reference block with deviations.
         """
         inter_ocular = self._measurements.inter_ocular_distance
+        face_width = self._measurements.face_width
 
         ideal_face_width = round(inter_ocular * 4, 2)
         ideal_face_height = round(ideal_face_width * GOLDEN_RATIO, 2)
         ideal_mouth_width = round(inter_ocular * 1.5, 2)
+        ideal_length_from_width = round(face_width * GOLDEN_RATIO, 2)
 
         block = ReferenceBlock(
             block_name="Inter-Ocular Distance Reference",
@@ -384,6 +387,7 @@ class VisagismCalculator:
             ideal_face_width=ideal_face_width,
             ideal_face_height=ideal_face_height,
             ideal_mouth_width=ideal_mouth_width,
+            ideal_length_from_width=ideal_length_from_width,
         )
         block.deviations = self._compute_block_deviations(block)
         return block
@@ -396,6 +400,7 @@ class VisagismCalculator:
         - ideal_face_width = nose_width * 4
         - ideal_face_height = ideal_face_width * GOLDEN_RATIO
         - ideal_mouth_width = nose_width * 1.5
+        - ideal_length_from_width = face_width * GOLDEN_RATIO
 
         Returns
         -------
@@ -403,10 +408,12 @@ class VisagismCalculator:
             Populated reference block with deviations.
         """
         nose_width = self._measurements.nose_width
+        face_width = self._measurements.face_width
 
         ideal_face_width = round(nose_width * 4, 2)
         ideal_face_height = round(ideal_face_width * GOLDEN_RATIO, 2)
         ideal_mouth_width = round(nose_width * 1.5, 2)
+        ideal_length_from_width = round(face_width * GOLDEN_RATIO, 2)
 
         block = ReferenceBlock(
             block_name="Nose Width Reference",
@@ -415,6 +422,7 @@ class VisagismCalculator:
             ideal_face_width=ideal_face_width,
             ideal_face_height=ideal_face_height,
             ideal_mouth_width=ideal_mouth_width,
+            ideal_length_from_width=ideal_length_from_width,
         )
         block.deviations = self._compute_block_deviations(block)
         return block
@@ -447,11 +455,13 @@ class VisagismCalculator:
             )
         )
 
+        # All blocks now compute ideal_length_from_width based on actual face width
+        assert block.ideal_length_from_width is not None
         deviations.append(
             self._compute_deviation(
                 "face_height",
                 self._measurements.total_face_height,
-                block.ideal_face_height,
+                block.ideal_length_from_width,
             )
         )
 

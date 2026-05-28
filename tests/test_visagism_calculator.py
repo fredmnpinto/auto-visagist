@@ -194,7 +194,7 @@ class TestBlockComputations:
         assert block.ideal_face_width == 80.0  # 20 * 4
         assert block.ideal_face_height == round(80.0 * GOLDEN_RATIO, 2)
         assert block.ideal_mouth_width == 30.0  # 20 * 1.5
-        assert block.ideal_length_from_width is None
+        assert block.ideal_length_from_width == round(100.0 * GOLDEN_RATIO, 2)
 
     def test_block_3_formulas(self) -> None:
         """Block 3 formulas produce expected values for known inputs."""
@@ -216,7 +216,7 @@ class TestBlockComputations:
         assert block.ideal_face_width == 60.0  # 15 * 4
         assert block.ideal_face_height == round(60.0 * GOLDEN_RATIO, 2)
         assert block.ideal_mouth_width == 22.5  # 15 * 1.5
-        assert block.ideal_length_from_width is None
+        assert block.ideal_length_from_width == round(100.0 * GOLDEN_RATIO, 2)
 
 
 class TestDeviationComputation:
@@ -322,8 +322,8 @@ class TestConsensusComputation:
         # Only block_1 has ideal_length_from_width
         assert consensus.ideal_length_from_width == block_1.ideal_length_from_width
 
-    def test_consensus_without_length_from_width(self) -> None:
-        """Consensus length_from_width is None when no block provides it."""
+    def test_consensus_averages_length_from_width(self) -> None:
+        """Consensus averages length_from_width when all blocks provide it."""
         calc = VisagismCalculator(
             eye_width=10.0,
             inter_ocular_distance=20.0,
@@ -338,7 +338,9 @@ class TestConsensusComputation:
         block_3 = calc._compute_block_3()
 
         consensus = calc._compute_consensus([block_2, block_3])
-        assert consensus.ideal_length_from_width is None
+        # Both blocks have the same ideal_length_from_width (based on actual face width)
+        expected = round(100.0 * GOLDEN_RATIO, 2)
+        assert consensus.ideal_length_from_width == expected
 
 
 class TestBestBlockSelection:

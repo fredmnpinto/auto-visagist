@@ -26,6 +26,8 @@ from visagism.image_loader import ImageLoader
 from visagism.landmark_detector import LandmarkDetector
 from visagism.landmark_visualizer import LandmarkVisualizer
 from visagism.model_finder import ModelFinder
+from visagism.report_formatter import ReportFormatter
+from visagism.visagism_calculator import VisagismCalculator
 
 
 def main() -> None:
@@ -81,6 +83,24 @@ def main() -> None:
         landmarks = dataclasses.replace(landmarks, hairline_y=hairline_y)
         print(f"Estimated hairline at y={hairline_y} (method={method}, "
               f"close_k={config.kernel_size}, canny={config.canny_low}/{config.canny_high})")
+
+        # Run visagism analysis
+        calculator = VisagismCalculator.from_landmarks(landmarks)
+        analysis = calculator.calculate()
+
+        if analysis.measurements.hairline_fallback_used:
+            print("Warning: Hairline not detected. Upper third estimated from middle third (may reduce accuracy).")
+
+        # Console output
+        console_output = ReportFormatter.format_console(analysis)
+        print(console_output)
+
+        # Save report
+        report_path = ReportFormatter.save_report(
+            analysis, config.output_dir, config.input_path.stem,
+            fallback_used=analysis.measurements.hairline_fallback_used
+        )
+        print(f"Saved analysis report: {report_path}")
 
         # Visualize if requested
         if config.visualize or config.save_viz:
