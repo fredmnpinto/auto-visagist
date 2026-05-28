@@ -319,3 +319,74 @@ class TestHairlineDetector:
         assert "searchable_rows" in result
         assert isinstance(result["max_gradient_value_full"], float)
         assert isinstance(result["searchable_rows"], int)
+
+    def test_roi_width_and_centering(self) -> None:
+        """Verify narrow centered ROI width and x-bounds for a typical face."""
+        detector = HairlineDetector()
+
+        from pathlib import Path
+        from visagism.constants import REGION_INDICES
+
+        landmarks_68 = [(0, 0)] * 68
+        landmarks_68[33] = (150, 200)
+
+        for idx in REGION_INDICES["left_eyebrow"] + REGION_INDICES["right_eyebrow"]:
+            landmarks_68[idx] = (100, 150)
+
+        landmarks_by_region: LandmarkRegions = {
+            name: [landmarks_68[i] for i in indices]
+            for name, indices in REGION_INDICES.items()
+        }
+
+        landmarks = FacialLandmarks(
+            image_path=Path("/fake/test.jpg"),
+            face_rect=(50, 50, 200, 250),
+            landmarks_68=landmarks_68,
+            landmarks_by_region=landmarks_by_region,
+        )
+
+        img_gray = np.zeros((400, 400), dtype=np.uint8)
+        img_gray[:] = 128
+
+        # Trigger fallback so we can inspect roi_coords
+        with pytest.warns(UserWarning, match="No strong hairline edge detected"):
+            result = detector.detect(img_gray, landmarks)
+
+        x_start, x_end, y_start, y_end = result["roi_coords"]
+        assert x_end - x_start == 6  # 3% of 200 = 6
+        assert x_start == 147        # center 150 - 3
+        assert x_end == 153          # center 150 + 3
+
+    def test_roi_minimum_width_one_pixel(self) -> None:
+        """Verify ROI width is at least 1 pixel for very narrow faces."""
+        detector = HairlineDetector()
+
+        from pathlib import Path
+        from visagism.constants import REGION_INDICES
+
+        landmarks_68 = [(0, 0)] * 68
+        landmarks_68[33] = (55, 70)
+
+        for idx in REGION_INDICES["left_eyebrow"] + REGION_INDICES["right_eyebrow"]:
+            landmarks_68[idx] = (55, 65)
+
+        landmarks_by_region: LandmarkRegions = {
+            name: [landmarks_68[i] for i in indices]
+            for name, indices in REGION_INDICES.items()
+        }
+
+        landmarks = FacialLandmarks(
+            image_path=Path("/fake/test.jpg"),
+            face_rect=(50, 50, 10, 20),
+            landmarks_68=landmarks_68,
+            landmarks_by_region=landmarks_by_region,
+        )
+
+        img_gray = np.zeros((400, 400), dtype=np.uint8)
+        img_gray[:] = 128
+
+        with pytest.warns(UserWarning, match="No strong hairline edge detected"):
+            result = detector.detect(img_gray, landmarks)
+
+        x_start, x_end, _, _ = result["roi_coords"]
+        assert x_end - x_start == 1  # max(1, int(10 * 0.03)) = 1

@@ -19,6 +19,7 @@ from visagism.constants import (
     HAIRLINE_CLAHE_GRID,
     HAIRLINE_MIN_GRADIENT_RATIO,
     HAIRLINE_ROI_UPWARD_EXPANSION,
+    HAIRLINE_ROI_WIDTH_RATIO,
 )
 from visagism.types import FacialLandmarks, ImageArray
 
@@ -67,9 +68,11 @@ class HairlineDetector:
         face_rect = landmarks.face_rect
         fx, fy, fw, fh = face_rect
 
-        # 2. Define search region (forehead area within face bounding box)
-        x_start = fx
-        x_end = fx + fw
+        # 2. Define search region (narrow centered strip above eyebrows)
+        face_center_x = fx + fw // 2
+        roi_width = max(1, int(fw * HAIRLINE_ROI_WIDTH_RATIO))
+        x_start = face_center_x - roi_width // 2
+        x_end = x_start + roi_width
         upward_shift = int(fh * HAIRLINE_ROI_UPWARD_EXPANSION)
         y_start = fy - upward_shift
         y_end = avg_eyebrow_y
