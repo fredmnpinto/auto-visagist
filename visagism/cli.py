@@ -36,9 +36,9 @@ class CliConfig:
     model_path: Path | None = None
     visualize: bool = False
     save_viz: bool = False
-    kernel_size: int = 3
+    kernel_size: int = 7
     canny_low: int = 30
-    canny_high: int = 100
+    canny_high: int = 60
 
 
 class CliParser:
@@ -105,8 +105,8 @@ class CliParser:
         parser.add_argument(
             "--kernel-size",
             type=int,
-            default=3,
-            help="Morphological closing kernel size for hairline detection (default: 3, 0=disable)",
+            default=7,
+            help="Morphological closing kernel size for hairline detection (default: 7, 0=disable)",
         )
         parser.add_argument(
             "--canny-low",
@@ -117,8 +117,8 @@ class CliParser:
         parser.add_argument(
             "--canny-high",
             type=int,
-            default=100,
-            help="Upper Canny threshold for hairline detection (default: 100)",
+            default=60,
+            help="Upper Canny threshold for hairline detection (default: 60)",
         )
 
         args = parser.parse_args(argv)

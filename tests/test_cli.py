@@ -20,9 +20,9 @@ class TestCliParser:
         assert config.model_path is None
         assert config.visualize is False
         assert config.save_viz is False
-        assert config.kernel_size == 3
+        assert config.kernel_size == 7
         assert config.canny_low == 30
-        assert config.canny_high == 100
+        assert config.canny_high == 60
 
     def test_parse_short_form(self) -> None:
         """Test parsing with short form -i."""
@@ -111,6 +111,6 @@ class TestCliParser:
     def test_parse_hairline_defaults(self) -> None:
         """Test default values for hairline detection parameters."""
         config = CliParser.parse(["--input", "photo.jpg"])
-        assert config.kernel_size == 3
+        assert config.kernel_size == 7
         assert config.canny_low == 30
-        assert config.canny_high == 100
+        assert config.canny_high == 60
