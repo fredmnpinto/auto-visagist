@@ -85,3 +85,27 @@ class ModelNotFoundError(ModelError):
         "  http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2\n"
         "Then decompress: bzip2 -d shape_predictor_68_face_landmarks.dat.bz2"
     )
+
+
+class LandmarkToolError(VisagismError):
+    """Base exception for landmark evaluation tool errors."""
+
+    MESSAGE: str = "Landmark evaluation tool error occurred."
+
+
+class LabelerError(LandmarkToolError):
+    """Errors related to the interactive landmark labeling GUI."""
+
+    MESSAGE: str = "Landmark labeling error occurred."
+
+
+class EvaluationError(LandmarkToolError):
+    """Errors related to landmark evaluation and comparison."""
+
+    MESSAGE: str = "Landmark evaluation error occurred."
+
+
+class GroundTruthError(LandmarkToolError):
+    """Errors related to ground truth data loading and validation."""
+
+    MESSAGE: str = "Ground truth data error occurred."
