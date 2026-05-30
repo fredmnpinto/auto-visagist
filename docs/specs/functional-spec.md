@@ -1,10 +1,11 @@
 # Functional Specification: Facial Visagism Analysis System
 
-> **Version**: 1.5.1 | **Date**: 2026-05-28 | **Author**: Documenter Agent | **Status**: Draft
+> **Version**: 1.5.3 | **Date**: 2026-05-30 | **Author**: Documenter Agent | **Status**: Draft
 
 ## Change Log
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.5.3 | 2026-05-30 | Documenter Agent | Document visagist calculator tweaks: global face height proportion (`ideal_face_height_from_width`), rejected reference flagging for non-best blocks, facial thirds proportion analysis, report formatter consolidation into single `=== PROPORTION ANALYSIS ===` section. Updated FR-007 and FR-011 acceptance criteria. Removed `ideal_length_from_width` from `ReferenceBlock` and `ConsensusResult`. Added new fields to `VisagismAnalysis` datamodel. |
 | 1.5.2 | 2026-05-28 | Documenter Agent | Documented hairline detection evaluation results (§7.6). Compared Canny vs No-Canny approaches against 9-image ground-truth dataset: Canny achieves 62% lower mean error (38.3px vs 100.3px). Updated FR-013 acceptance criteria to reflect Canny as primary method with No-Canny fallback. Added risk §8.1.7 on hairline detection accuracy variance. |
 | 1.5.1 | 2026-05-28 | Documenter Agent | Updated FR-007, Architecture (§5.1), and Data Models (§5.2) to reflect "best reference block" approach. Replaced consensus averaging with selection of the single reference block having the smallest overall deviation. Added `best_block` and `best_block_name` fields to `VisagismAnalysis`. Updated `Visagist Calculator` component description and FR-011 acceptance criteria. |
 | 1.5.0 | 2026-05-28 | Documenter Agent | Added FR-016 (Landmark Evaluation Tool, Could priority, Implemented). Dual-mode utility for interactive ground-truth labeling (68 landmarks + hairline) and batch evaluation of predictions vs ground truth with NME metrics. New modules: `visagism/landmark_labeler.py`, `visagism/landmark_evaluator.py`, `visagism/landmark_ground_truth.py`. CLI: `scripts/landmark_evaluation.py`. Updated Architecture (§5.1, §5.2), Interfaces (§6.1–6.3), and Testing Strategy (§7.5). |
@@ -211,16 +212,18 @@ A working prototype that:
 **Acceptance Criteria**:
 - [x] Compute three reference blocks from facial measurements: Block 1 (Eye Width Reference), Block 2 (Inter-Ocular Distance Reference), Block 3 (Nose Width Reference)
 - [x] Each block computes ideal face width, ideal face height, and ideal mouth width using golden ratio formulas matching PlanilhaAnalise.xlsx
-- [x] Block 1 additionally computes ideal length from width using face width × GOLDEN_RATIO
+- [x] Calculate a single global `ideal_face_height_from_width` once from `face_width * GOLDEN_RATIO` (computed independently of reference blocks)
 - [x] Calculate deviation percentage for each actual measurement against its ideal value, rounded to 2 decimal places
 - [x] Flag proportions deviating >10% from ideal (strict threshold: absolute deviation > 10%)
 - [x] Evaluate all three reference blocks and select the best block based on the smallest overall deviation magnitude
 - [x] Use the best reference block's ideal values as the primary reference for analysis and reporting
 - [x] Include best block identification (name and deviations) in the analysis results
 - [x] Collect all flagged deviations from the best block into a flattened list for reporting
+- [x] Compute rejected reference flags for non-best blocks: for each non-best block, identify which of its measurements deviate >10% from the best block's ideal values, producing a human-readable flag string per rejected block
+- [x] Perform facial thirds proportion analysis: compare each third (superior, medium, inferior) against the ideal third height (`total_face_height / 3`), flag thirds deviating >10%, and include `thirds_proportion_flags` in the analysis results
 - [x] Handle missing upper third gracefully (None actual yields None deviation, not flagged)
 **Status**: Implemented
-**Note**: Implemented in `visagism/visagism_calculator.py` by the `VisagismCalculator` class. Formulas: ideal_face_width = reference × 4, ideal_face_height = ideal_face_width × 1.618, ideal_mouth_width = reference × 1.5.
+**Note**: Implemented in `visagism/visagism_calculator.py` by the `VisagismCalculator` class. Formulas: ideal_face_width = reference × 4, ideal_face_height = ideal_face_width × 1.618, ideal_mouth_width = reference × 1.5. Global face height from width = face_width × 1.618.
 
 #### FR-011: Analysis Report Generation
 **Description**: The system shall generate a text-based or visual report containing analysis results.
@@ -228,17 +231,20 @@ A working prototype that:
 **Source**: Assignment Spec §2.4
 **Dependencies**: FR-006, FR-007
 **Acceptance Criteria**:
-- [x] Data structures ready for report generation: `VisagismAnalysis` dataclass contains all measurements, three reference blocks, best block selection, and flagged deviations
+- [x] Data structures ready for report generation: `VisagismAnalysis` dataclass contains all measurements, three reference blocks, best block selection, flagged deviations, rejected reference flags, and facial thirds proportion flags
 - [x] Report data is human-readable via dataclass fields and string representations
+- [x] Report formatter produces a single consolidated `=== PROPORTION ANALYSIS ===` section (merged from previously separate sections)
 - [x] Include all calculated proportions with measurements (face width, face height, mouth width, thirds)
 - [x] Include golden ratio analysis with deviation percentages for each block and the best reference block
 - [x] Include list of flagged deviations (>10% threshold) with measurement name, actual, ideal, and deviation percent
+- [x] Include "Relative Feature Size" subsection (renamed from "Rejected Reference Flags") summarizing why non-best reference blocks were rejected
+- [x] Include conditional facial thirds display: detailed third-by-third breakdown is shown only when one or more thirds are flagged as deviating; otherwise, a compact summary is shown
 - [x] `VisagismAnalysis` can be serialized or formatted for console output, text file, or future visualization
 - [ ] Generate report in text format (.txt) or console output (pending integration with CLI)
 - [ ] Include detected face shape with confidence indicators (pending FR-006 implementation)
 - [ ] Save report to file named "analysis_report_[timestamp].txt" or display in console (pending integration)
 **Status**: Implemented
-**Note**: Core data structures and analysis logic are complete in `visagism/visagism_calculator.py`. Full report formatting and CLI integration depend on FR-006 (Face Shape Classification) completion.
+**Note**: Core data structures and analysis logic are complete in `visagism/visagism_calculator.py`. Report formatter consolidation and conditional display implemented. Full CLI integration depends on FR-006 (Face Shape Classification) completion.
 
 #### FR-012: Error Handling
 **Description**: The system shall gracefully handle errors including no face detected, multiple faces, poor quality, non-frontal poses.
@@ -408,14 +414,18 @@ A working prototype that:
 | best_block | ReferenceBlock | Yes | The reference block selected as best (smallest overall deviation magnitude) among the three blocks |
 | best_block_name | String | Yes | Human-readable identifier of the best block (e.g., "Block 1 (Eye Width)", "Block 2 (Inter-Ocular)", "Block 3 (Nose Width)") |
 | all_flagged_deviations | List[DeviationResult] | Yes | Flattened list of all deviations flagged in the best reference block (>10% threshold) |
+| ideal_face_height_from_width | Float | Yes | Global ideal face height computed once from `face_width * GOLDEN_RATIO`, independent of reference blocks |
+| global_face_height_deviation | DeviationResult | Yes | Deviation of actual total face height against `ideal_face_height_from_width` |
+| rejected_reference_flags | List[str] | Yes | Human-readable flag strings for each non-best block, indicating which of its measurements deviate >10% from the best block's ideal values |
+| thirds_proportion_flags | List[str] | Yes | Human-readable flag strings for facial thirds that deviate >10% from the ideal third height (`total_face_height / 3`) |
 
 #### Supporting Dataclasses
 | Dataclass | Purpose | Key Fields |
 |-----------|---------|------------|
 | FacialMeasurements | Container for raw facial measurements | eye_width, inter_ocular_distance, nose_width, mouth_width, face_width, lower_third, middle_third, upper_third (optional), total_face_height (property) |
-| ReferenceBlock | Single reference block derived from one measurement | block_name, reference_measurement, reference_value, ideal_face_width, ideal_face_height, ideal_mouth_width, ideal_length_from_width (Block 1 only), deviations |
+| ReferenceBlock | Single reference block derived from one measurement | block_name, reference_measurement, reference_value, ideal_face_width, ideal_face_height, ideal_mouth_width, deviations |
 | DeviationResult | Result of comparing actual against ideal | measurement_name, actual, ideal, deviation_percent, is_flagged |
-| ConsensusResult | Consensus ideal values averaged across blocks (retained for comparison; primary analysis uses best block selection) | ideal_face_width, ideal_face_height, ideal_mouth_width, ideal_length_from_width, deviations |
+| ConsensusResult | Consensus ideal values averaged across blocks (retained for comparison; primary analysis uses best block selection) | ideal_face_width, ideal_face_height, ideal_mouth_width, deviations |
 
 ### 5.3 Technology Stack
 - **Language**: Python 3.8+
