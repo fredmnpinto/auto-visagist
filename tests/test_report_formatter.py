@@ -47,20 +47,22 @@ class TestFormatConsole:
     def test_includes_best_reference_block(
         self, sample_analysis: VisagismAnalysis
     ) -> None:
-        """Console output contains the best reference block section."""
+        """Console output contains the best reference within proportion analysis."""
         output = ReportFormatter.format_console(sample_analysis)
-        assert "=== BEST REFERENCE BLOCK" in output
+        assert "=== PROPORTION ANALYSIS ===" in output
+        assert "Best Reference:" in output
         assert sample_analysis.best_block_name in output
 
     def test_includes_flagged_deviations(
         self, sample_analysis: VisagismAnalysis
     ) -> None:
-        """Console output contains flagged deviations summary."""
+        """Console output contains deviations within proportion analysis."""
         output = ReportFormatter.format_console(sample_analysis)
-        assert "=== FLAGGED DEVIATIONS ===" in output
+        assert "=== PROPORTION ANALYSIS ===" in output
+        assert "Deviations from Best Reference:" in output
         # With these measurements, some deviations should be flagged
         assert (
-            "Total flagged:" in output
+            "[FLAGGED]" in output
             or "No significant deviations detected" in output
         )
 
@@ -157,6 +159,103 @@ class TestFormatConsole:
         output = ReportFormatter.format_console(analysis)
         assert "Upper Third: 67.00 px" in output
         assert "[estimated]" not in output.split("Upper Third:")[1].split("\n")[0]
+
+    def test_includes_global_face_height_section(
+        self, sample_analysis: VisagismAnalysis
+    ) -> None:
+        """Console output contains global face height within proportion analysis."""
+        output = ReportFormatter.format_console(sample_analysis)
+        assert "=== PROPORTION ANALYSIS ===" in output
+        assert "Global Face Height (from width):" in output
+        assert "Ideal:" in output
+        assert "Actual:" in output
+        assert "Deviation:" in output
+
+    def test_includes_relative_feature_size_section(
+        self, sample_analysis: VisagismAnalysis
+    ) -> None:
+        """Console output contains relative feature size within proportion analysis."""
+        output = ReportFormatter.format_console(sample_analysis)
+        assert "=== PROPORTION ANALYSIS ===" in output
+        assert "Relative Feature Size:" in output
+
+    def test_includes_facial_thirds_section(
+        self, sample_analysis: VisagismAnalysis
+    ) -> None:
+        """Console output contains facial thirds within proportion analysis."""
+        output = ReportFormatter.format_console(sample_analysis)
+        assert "=== PROPORTION ANALYSIS ===" in output
+        # Should show either detailed or compact facial thirds
+        assert (
+            "Facial Thirds:" in output
+            or "Facial Thirds: All thirds are well balanced." in output
+        )
+
+    def test_total_face_height_na_when_upper_third_none(self) -> None:
+        """When upper_third is None, total face height shows N/A."""
+        calc = VisagismCalculator(
+            eye_width=45.0,
+            inter_ocular_distance=30.0,
+            nose_width=25.0,
+            mouth_width=50.0,
+            face_width=180.0,
+            lower_third=60.0,
+            middle_third=62.0,
+            upper_third=None,
+        )
+        analysis = calc.calculate()
+        output = ReportFormatter.format_console(analysis)
+        assert "Total Face Height: N/A" in output
+
+    def test_thirds_flags_displayed_when_present(self) -> None:
+        """When thirds_proportion_flags is non-empty, detailed thirds are shown."""
+        calc = VisagismCalculator(
+            eye_width=10.0,
+            inter_ocular_distance=20.0,
+            nose_width=15.0,
+            mouth_width=30.0,
+            face_width=100.0,
+            lower_third=30.0,
+            middle_third=50.0,
+            upper_third=50.0,
+        )
+        analysis = calc.calculate()
+        output = ReportFormatter.format_console(analysis)
+        assert "=== PROPORTION ANALYSIS ===" in output
+        assert "Facial Thirds:" in output
+        # With these values, thirds should be flagged
+        assert "[FLAGGED]" in output
+        assert "Status: Some thirds deviate from ideal 1:1:1 ratio." in output
+
+    def test_thirds_balanced_shows_compact_message(self) -> None:
+        """When thirds are balanced, show compact message only."""
+        calc = VisagismCalculator(
+            eye_width=45.0,
+            inter_ocular_distance=30.0,
+            nose_width=25.0,
+            mouth_width=50.0,
+            face_width=180.0,
+            lower_third=60.0,
+            middle_third=60.0,
+            upper_third=60.0,
+        )
+        analysis = calc.calculate()
+        output = ReportFormatter.format_console(analysis)
+        assert "Facial Thirds: All thirds are well balanced." in output
+        assert "Status: Some thirds deviate" not in output
+
+    def test_format_deviation_with_none_actual(self) -> None:
+        """_format_deviation handles None actual value."""
+        dev = DeviationResult(
+            measurement_name="face_height",
+            actual=None,
+            ideal=100.0,
+            deviation_percent=None,
+            is_flagged=False,
+        )
+        formatted = ReportFormatter._format_deviation(dev)
+        assert "actual=N/A" in formatted
+        assert "dev=N/A" in formatted
 
 
 class TestFormatTextReport:

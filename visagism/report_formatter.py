@@ -10,11 +10,20 @@ from datetime import datetime
 from pathlib import Path
 from typing import List
 
+from visagism.constants import THIRDS_DEVIATION_THRESHOLD
 from visagism.visagism_calculator import (
     DeviationResult,
-    ReferenceBlock,
     VisagismAnalysis,
 )
+
+REJECTED_FLAG_DESCRIPTIONS = {
+    "large_eyes": "eyes are relatively large",
+    "small_eyes": "eyes are relatively small",
+    "wide_set_eyes": "eyes are relatively wide-set",
+    "close_set_eyes": "eyes are relatively close-set",
+    "large_nose": "nose is relatively large",
+    "small_nose": "nose is relatively small",
+}
 
 
 class ReportFormatter:
@@ -46,10 +55,15 @@ class ReportFormatter:
         lines.append(f"  Face Width: {m.face_width:.2f} px")
         lines.append(f"  Lower Third: {m.lower_third:.2f} px")
         lines.append(f"  Middle Third: {m.middle_third:.2f} px")
-        if m.hairline_fallback_used:
-            lines.append(f"  Upper Third: {m.upper_third:.2f} px [estimated]")
+        if m.upper_third is not None:
+            if m.hairline_fallback_used:
+                lines.append(
+                    f"  Upper Third: {m.upper_third:.2f} px [estimated]"
+                )
+            else:
+                lines.append(f"  Upper Third: {m.upper_third:.2f} px")
         else:
-            lines.append(f"  Upper Third: {m.upper_third:.2f} px")
+            lines.append("  Upper Third: N/A")
         total = m.total_face_height
         if total is not None:
             lines.append(f"  Total Face Height: {total:.2f} px")
@@ -57,33 +71,97 @@ class ReportFormatter:
             lines.append("  Total Face Height: N/A")
         lines.append("")
 
-        # === BEST REFERENCE BLOCK ===
-        lines.append(
-            f"=== BEST REFERENCE BLOCK ({analysis.best_block_name}) ==="
-        )
-        lines.extend(
-            ReportFormatter._format_block(analysis.best_block, prefix="  ")
-        )
+        # === PROPORTION ANALYSIS ===
+        lines.append("=== PROPORTION ANALYSIS ===")
+        lines.append("")
+        lines.append(f"Best Reference: {analysis.best_block_name}")
         lines.append("")
 
-        # === FLAGGED DEVIATIONS ===
-        lines.append("=== FLAGGED DEVIATIONS ===")
+        # Deviations from Best Reference
+        lines.append("Deviations from Best Reference:")
         flagged = [
             dev for dev in analysis.best_block.deviations if dev.is_flagged
         ]
         if flagged:
-            for idx, dev in enumerate(flagged, start=1):
+            for dev in flagged:
                 lines.append(
-                    f"  [{idx}] {dev.measurement_name}: "
+                    f"  [FLAGGED] {dev.measurement_name}: "
                     f"actual={dev.actual}, ideal={dev.ideal}, "
                     f"dev={dev.deviation_percent}%"
                 )
-            lines.append(f"  Total flagged: {len(flagged)}")
         else:
             lines.append(
                 "  No significant deviations detected. "
                 "All proportions are within the ideal range."
             )
+        lines.append("")
+
+        # Global Face Height (from width)
+        lines.append("Global Face Height (from width):")
+        gdev = analysis.global_face_height_deviation
+        actual_str = f"{gdev.actual:.2f}" if gdev.actual is not None else "N/A"
+        dev_str = (
+            f"{gdev.deviation_percent:.2f}"
+            if gdev.deviation_percent is not None
+            else "N/A"
+        )
+        status = "[FLAGGED]" if gdev.is_flagged else "[OK]"
+        lines.append(
+            f"  Ideal: {analysis.ideal_face_height_from_width:.2f} px | "
+            f"Actual: {actual_str} px | "
+            f"Deviation: {dev_str}% {status}"
+        )
+        lines.append("")
+
+        # Relative Feature Size
+        lines.append("Relative Feature Size:")
+        if analysis.rejected_reference_flags:
+            for flag in analysis.rejected_reference_flags:
+                desc = REJECTED_FLAG_DESCRIPTIONS.get(flag, flag)
+                lines.append(f"  - {flag} ({desc})")
+        else:
+            lines.append("  No relative feature size flags.")
+        lines.append("")
+
+        # Facial Thirds
+        if analysis.thirds_proportion_flags:
+            lines.append("Facial Thirds:")
+            m = analysis.measurements
+            if m.upper_third is not None and m.total_face_height is not None:
+                ideal_third = m.total_face_height / 3.0
+                thirds = [
+                    ("Upper", m.upper_third),
+                    ("Middle", m.middle_third),
+                    ("Lower", m.lower_third),
+                ]
+            else:
+                partial_total = m.middle_third + m.lower_third
+                ideal_third = partial_total / 2.0
+                thirds = [
+                    ("Middle", m.middle_third),
+                    ("Lower", m.lower_third),
+                ]
+
+            for name, actual in thirds:
+                if ideal_third > 0:
+                    deviation = ((actual - ideal_third) / ideal_third) * 100
+                    is_flagged = abs(deviation) > (
+                        THIRDS_DEVIATION_THRESHOLD * 100
+                    )
+                else:
+                    deviation = 0.0
+                    is_flagged = False
+                status = "[FLAGGED]" if is_flagged else "[OK]"
+                lines.append(
+                    f"  {name}: {actual:.2f} px "
+                    f"(ideal: {ideal_third:.2f} px, {deviation:.2f}%) "
+                    f"{status}"
+                )
+            lines.append(
+                "  Status: Some thirds deviate from ideal 1:1:1 ratio."
+            )
+        else:
+            lines.append("Facial Thirds: All thirds are well balanced.")
 
         return "\n".join(lines)
 
@@ -172,44 +250,6 @@ class ReportFormatter:
         report_path.write_text(report_content, encoding="utf-8")
 
         return report_path
-
-    @staticmethod
-    def _format_block(block: ReferenceBlock, prefix: str = "") -> List[str]:
-        """Format a single reference block as lines of text.
-
-        Parameters
-        ----------
-        block : ReferenceBlock
-            The reference block to format.
-        prefix : str, optional
-            String to prepend to each line (e.g. indentation).
-
-        Returns
-        -------
-        list of str
-            Lines representing the block.
-        """
-        lines: List[str] = []
-        lines.append(
-            f"{prefix}Ideal Face Width: {block.ideal_face_width:.2f} px"
-        )
-        lines.append(
-            f"{prefix}Ideal Face Height: {block.ideal_face_height:.2f} px"
-        )
-        lines.append(
-            f"{prefix}Ideal Mouth Width: {block.ideal_mouth_width:.2f} px"
-        )
-        if block.ideal_length_from_width is not None:
-            lines.append(
-                f"{prefix}Ideal Length from Width: "
-                f"{block.ideal_length_from_width:.2f} px"
-            )
-        lines.append(f"{prefix}Deviations:")
-        for dev in block.deviations:
-            lines.append(
-                f"{prefix}  {ReportFormatter._format_deviation(dev)}"
-            )
-        return lines
 
     @staticmethod
     def _format_deviation(dev: DeviationResult) -> str:

@@ -113,9 +113,6 @@ class ReferenceBlock:
         Ideal face height computed from the reference.
     ideal_mouth_width : float
         Ideal mouth width computed from the reference.
-    ideal_length_from_width : float or None
-        Ideal face length derived from the actual face width using the
-        golden ratio. All three blocks populate this field.
     deviations : list of DeviationResult
         Deviations of actual measurements from the ideal values.
     """
@@ -126,7 +123,6 @@ class ReferenceBlock:
     ideal_face_width: float
     ideal_face_height: float
     ideal_mouth_width: float
-    ideal_length_from_width: Optional[float] = None
     deviations: List[DeviationResult] = field(default_factory=list)
 
 
@@ -142,9 +138,6 @@ class ConsensusResult:
         Average ideal face height across blocks.
     ideal_mouth_width : float
         Average ideal mouth width across blocks.
-    ideal_length_from_width : float or None
-        Average ideal length from width across blocks (None if all
-        blocks lack this value).
     deviations : list of DeviationResult
         Deviations of actual measurements from the consensus ideals.
     """
@@ -152,7 +145,6 @@ class ConsensusResult:
     ideal_face_width: float
     ideal_face_height: float
     ideal_mouth_width: float
-    ideal_length_from_width: Optional[float] = None
     deviations: List[DeviationResult] = field(default_factory=list)
 
 
@@ -180,6 +172,17 @@ class VisagismAnalysis:
         The reference block with the minimum total absolute deviation.
     best_block_name : str
         Human-readable name of the best reference block.
+    ideal_face_height_from_width : float
+        Global ideal face height computed from actual face width using
+        the golden ratio (face_width * GOLDEN_RATIO).
+    global_face_height_deviation : DeviationResult
+        Deviation comparing actual total face height against the global
+        ideal face height from width.
+    rejected_reference_flags : list of str
+        Flags indicating relatively large/small features for non-best
+        reference blocks.
+    thirds_proportion_flags : list of str
+        Flags for facial thirds deviating from the ideal 1:1:1 ratio.
     """
 
     measurements: FacialMeasurements
@@ -190,6 +193,18 @@ class VisagismAnalysis:
     all_flagged_deviations: List[DeviationResult] = field(default_factory=list)
     best_block: ReferenceBlock = field(default=None)  # type: ignore[assignment]
     best_block_name: str = ""
+    ideal_face_height_from_width: float = 0.0
+    global_face_height_deviation: DeviationResult = field(
+        default_factory=lambda: DeviationResult(
+            measurement_name="face_height",
+            actual=None,
+            ideal=0.0,
+            deviation_percent=None,
+            is_flagged=False,
+        )
+    )
+    rejected_reference_flags: List[str] = field(default_factory=list)
+    thirds_proportion_flags: List[str] = field(default_factory=list)
 
 
 class VisagismCalculator:
@@ -290,13 +305,16 @@ class VisagismCalculator:
 
         Computes the three reference blocks, identifies the block with
         the smallest total absolute deviation (the "best" block), and
-        collects flagged deviations from that block only.
+        collects flagged deviations from that block only. Also computes
+        global face height proportion, rejected reference flags, and
+        facial thirds proportion flags.
 
         Returns
         -------
         VisagismAnalysis
             Complete analysis result containing measurements, reference
-            blocks, consensus, best block, and flagged deviations.
+            blocks, consensus, best block, flagged deviations, and new
+            proportion analyses.
         """
         block_1 = self._compute_block_1()
         block_2 = self._compute_block_2()
@@ -311,6 +329,17 @@ class VisagismCalculator:
             dev for dev in best_block.deviations if dev.is_flagged
         ]
 
+        (
+            ideal_face_height_from_width,
+            global_face_height_deviation,
+        ) = self._compute_global_face_height_proportion()
+
+        rejected_reference_flags = self._compute_rejected_reference_flags(
+            blocks, best_block
+        )
+
+        thirds_proportion_flags = self._compute_thirds_proportion_flags()
+
         return VisagismAnalysis(
             measurements=self._measurements,
             block_1_eye_width=block_1,
@@ -320,6 +349,10 @@ class VisagismCalculator:
             all_flagged_deviations=all_flagged,
             best_block=best_block,
             best_block_name=best_block.block_name,
+            ideal_face_height_from_width=ideal_face_height_from_width,
+            global_face_height_deviation=global_face_height_deviation,
+            rejected_reference_flags=rejected_reference_flags,
+            thirds_proportion_flags=thirds_proportion_flags,
         )
 
     def _compute_block_1(self) -> ReferenceBlock:
@@ -330,7 +363,6 @@ class VisagismCalculator:
         - ideal_face_width = eye_width * 4
         - ideal_face_height = ideal_face_width * GOLDEN_RATIO
         - ideal_mouth_width = eye_width * 1.5
-        - ideal_length_from_width = face_width * GOLDEN_RATIO
 
         Returns
         -------
@@ -338,12 +370,10 @@ class VisagismCalculator:
             Populated reference block with deviations.
         """
         eye_width = self._measurements.eye_width
-        face_width = self._measurements.face_width
 
         ideal_face_width = round(eye_width * 4, 2)
         ideal_face_height = round(ideal_face_width * GOLDEN_RATIO, 2)
         ideal_mouth_width = round(eye_width * 1.5, 2)
-        ideal_length_from_width = round(face_width * GOLDEN_RATIO, 2)
 
         block = ReferenceBlock(
             block_name="Eye Width Reference",
@@ -352,7 +382,6 @@ class VisagismCalculator:
             ideal_face_width=ideal_face_width,
             ideal_face_height=ideal_face_height,
             ideal_mouth_width=ideal_mouth_width,
-            ideal_length_from_width=ideal_length_from_width,
         )
         block.deviations = self._compute_block_deviations(block)
         return block
@@ -365,7 +394,6 @@ class VisagismCalculator:
         - ideal_face_width = inter_ocular_distance * 4
         - ideal_face_height = ideal_face_width * GOLDEN_RATIO
         - ideal_mouth_width = inter_ocular_distance * 1.5
-        - ideal_length_from_width = face_width * GOLDEN_RATIO
 
         Returns
         -------
@@ -373,12 +401,10 @@ class VisagismCalculator:
             Populated reference block with deviations.
         """
         inter_ocular = self._measurements.inter_ocular_distance
-        face_width = self._measurements.face_width
 
         ideal_face_width = round(inter_ocular * 4, 2)
         ideal_face_height = round(ideal_face_width * GOLDEN_RATIO, 2)
         ideal_mouth_width = round(inter_ocular * 1.5, 2)
-        ideal_length_from_width = round(face_width * GOLDEN_RATIO, 2)
 
         block = ReferenceBlock(
             block_name="Inter-Ocular Distance Reference",
@@ -387,7 +413,6 @@ class VisagismCalculator:
             ideal_face_width=ideal_face_width,
             ideal_face_height=ideal_face_height,
             ideal_mouth_width=ideal_mouth_width,
-            ideal_length_from_width=ideal_length_from_width,
         )
         block.deviations = self._compute_block_deviations(block)
         return block
@@ -400,7 +425,6 @@ class VisagismCalculator:
         - ideal_face_width = nose_width * 4
         - ideal_face_height = ideal_face_width * GOLDEN_RATIO
         - ideal_mouth_width = nose_width * 1.5
-        - ideal_length_from_width = face_width * GOLDEN_RATIO
 
         Returns
         -------
@@ -408,12 +432,10 @@ class VisagismCalculator:
             Populated reference block with deviations.
         """
         nose_width = self._measurements.nose_width
-        face_width = self._measurements.face_width
 
         ideal_face_width = round(nose_width * 4, 2)
         ideal_face_height = round(ideal_face_width * GOLDEN_RATIO, 2)
         ideal_mouth_width = round(nose_width * 1.5, 2)
-        ideal_length_from_width = round(face_width * GOLDEN_RATIO, 2)
 
         block = ReferenceBlock(
             block_name="Nose Width Reference",
@@ -422,7 +444,6 @@ class VisagismCalculator:
             ideal_face_width=ideal_face_width,
             ideal_face_height=ideal_face_height,
             ideal_mouth_width=ideal_mouth_width,
-            ideal_length_from_width=ideal_length_from_width,
         )
         block.deviations = self._compute_block_deviations(block)
         return block
@@ -442,8 +463,7 @@ class VisagismCalculator:
         Returns
         -------
         list of DeviationResult
-            Deviations for face width, face height, mouth width, and
-            length from width (when available).
+            Deviations for face width, face height, and mouth width.
         """
         deviations: List[DeviationResult] = []
 
@@ -455,13 +475,11 @@ class VisagismCalculator:
             )
         )
 
-        # All blocks now compute ideal_length_from_width based on actual face width
-        assert block.ideal_length_from_width is not None
         deviations.append(
             self._compute_deviation(
                 "face_height",
                 self._measurements.total_face_height,
-                block.ideal_length_from_width,
+                block.ideal_face_height,
             )
         )
 
@@ -472,15 +490,6 @@ class VisagismCalculator:
                 block.ideal_mouth_width,
             )
         )
-
-        if block.ideal_length_from_width is not None:
-            deviations.append(
-                self._compute_deviation(
-                    "length_from_width",
-                    self._measurements.total_face_height,
-                    block.ideal_length_from_width,
-                )
-            )
 
         return deviations
 
@@ -549,20 +558,10 @@ class VisagismCalculator:
             sum(b.ideal_mouth_width for b in blocks) / len(blocks), 2
         )
 
-        length_values = [
-            b.ideal_length_from_width
-            for b in blocks
-            if b.ideal_length_from_width is not None
-        ]
-        ideal_length_from_width: Optional[float] = None
-        if length_values:
-            ideal_length_from_width = round(sum(length_values) / len(length_values), 2)
-
         consensus = ConsensusResult(
             ideal_face_width=ideal_face_width,
             ideal_face_height=ideal_face_height,
             ideal_mouth_width=ideal_mouth_width,
-            ideal_length_from_width=ideal_length_from_width,
         )
 
         consensus.deviations = self._compute_consensus_deviations(consensus)
@@ -581,8 +580,7 @@ class VisagismCalculator:
         Returns
         -------
         list of DeviationResult
-            Deviations for face width, face height, mouth width, and
-            length from width (when available).
+            Deviations for face width, face height, and mouth width.
         """
         deviations: List[DeviationResult] = []
 
@@ -609,15 +607,6 @@ class VisagismCalculator:
                 consensus.ideal_mouth_width,
             )
         )
-
-        if consensus.ideal_length_from_width is not None:
-            deviations.append(
-                self._compute_deviation(
-                    "length_from_width",
-                    self._measurements.total_face_height,
-                    consensus.ideal_length_from_width,
-                )
-            )
 
         return deviations
 
@@ -653,6 +642,148 @@ class VisagismCalculator:
                 best = block
 
         return best
+
+    def _compute_global_face_height_proportion(self) -> tuple[float, DeviationResult]:
+        """Compute global ideal face height from width and its deviation.
+
+        The ideal face height is computed from the actual face width
+        using the golden ratio, independent of any reference block.
+
+        Returns
+        -------
+        tuple of (float, DeviationResult)
+            The ideal face height from width and the deviation comparing
+            actual total face height against this ideal.
+        """
+        ideal_face_height_from_width = round(
+            self._measurements.face_width * GOLDEN_RATIO, 2
+        )
+        deviation = self._compute_deviation(
+            "face_height",
+            self._measurements.total_face_height,
+            ideal_face_height_from_width,
+        )
+        return ideal_face_height_from_width, deviation
+
+    @staticmethod
+    def _compute_rejected_reference_flags(
+        blocks: List[ReferenceBlock],
+        best_block: ReferenceBlock,
+    ) -> List[str]:
+        """Flag non-best reference blocks as relatively large or small.
+
+        For each non-best block, analyses the sign of the three core
+        deviations (face_width, face_height, mouth_width). If at least
+        two are negative (actual < ideal), the reference feature is
+        relatively large. If at least two are positive, it is relatively
+        small.
+
+        Parameters
+        ----------
+        blocks : list of ReferenceBlock
+            All computed reference blocks.
+        best_block : ReferenceBlock
+            The selected best block (excluded from flagging).
+
+        Returns
+        -------
+        list of str
+            Flag strings for rejected blocks (e.g. "large_eyes",
+            "small_nose").
+        """
+        flag_map = {
+            "Eye Width Reference": ("large_eyes", "small_eyes"),
+            "Inter-Ocular Distance Reference": (
+                "wide_set_eyes",
+                "close_set_eyes",
+            ),
+            "Nose Width Reference": ("large_nose", "small_nose"),
+        }
+
+        flags: List[str] = []
+
+        for block in blocks:
+            if block.block_name == best_block.block_name:
+                continue
+
+            core_devs: dict[str, float | None] = {
+                "face_width": None,
+                "face_height": None,
+                "mouth_width": None,
+            }
+            for dev in block.deviations:
+                if dev.measurement_name in core_devs:
+                    core_devs[dev.measurement_name] = dev.deviation_percent
+
+            # Skip if any core deviation is unavailable
+            if any(v is None for v in core_devs.values()):
+                continue
+
+            negative_count = sum(
+                1 for v in core_devs.values() if v is not None and v < 0
+            )
+            positive_count = sum(
+                1 for v in core_devs.values() if v is not None and v > 0
+            )
+
+            large_flag, small_flag = flag_map.get(
+                block.block_name, (None, None)
+            )
+            if large_flag is None:
+                continue
+            assert small_flag is not None
+
+            if negative_count >= 2:
+                flags.append(large_flag)
+            elif positive_count >= 2:
+                flags.append(small_flag)
+            # Mixed deviations → no flag
+
+        return flags
+
+    def _compute_thirds_proportion_flags(self) -> List[str]:
+        """Flag facial thirds deviating from ideal proportions.
+
+        Compares each third against the ideal 1:1:1 ratio. When the
+        upper third is unavailable, compares middle and lower against
+        a 1:1 split of the partial total.
+
+        Returns
+        -------
+        list of str
+            Flag strings such as ``large_upper_third``,
+            ``small_middle_third``, etc.
+        """
+        from visagism.constants import THIRDS_DEVIATION_THRESHOLD
+
+        flags: List[str] = []
+        m = self._measurements
+
+        if m.upper_third is not None and m.total_face_height is not None:
+            ideal_third = m.total_face_height / 3.0
+            thirds = [
+                ("upper_third", m.upper_third),
+                ("middle_third", m.middle_third),
+                ("lower_third", m.lower_third),
+            ]
+        else:
+            partial_total = m.middle_third + m.lower_third
+            ideal_third = partial_total / 2.0
+            thirds = [
+                ("middle_third", m.middle_third),
+                ("lower_third", m.lower_third),
+            ]
+
+        for name, actual in thirds:
+            if ideal_third > 0:
+                deviation_percent = ((actual - ideal_third) / ideal_third) * 100
+                if abs(deviation_percent) > (THIRDS_DEVIATION_THRESHOLD * 100):
+                    if deviation_percent > 0:
+                        flags.append(f"large_{name}")
+                    else:
+                        flags.append(f"small_{name}")
+
+        return flags
 
     @classmethod
     def from_landmarks(cls, landmarks: FacialLandmarks) -> VisagismCalculator:

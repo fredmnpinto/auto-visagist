@@ -13,6 +13,9 @@ GOLDEN_RATIO: float = 1.618
 # Deviation threshold for golden ratio comparison (10%)
 DEVIATION_THRESHOLD: float = 0.10
 
+# Deviation threshold for facial thirds proportion analysis (10%)
+THIRDS_DEVIATION_THRESHOLD: float = 0.10
+
 # Default output directory
 OUTPUT_DIR: str = "output"
 

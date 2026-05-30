@@ -172,7 +172,6 @@ class TestBlockComputations:
         assert block.ideal_face_width == 40.0  # 10 * 4
         assert block.ideal_face_height == round(40.0 * GOLDEN_RATIO, 2)
         assert block.ideal_mouth_width == 15.0  # 10 * 1.5
-        assert block.ideal_length_from_width == round(100.0 * GOLDEN_RATIO, 2)
 
     def test_block_2_formulas(self) -> None:
         """Block 2 formulas produce expected values for known inputs."""
@@ -194,7 +193,6 @@ class TestBlockComputations:
         assert block.ideal_face_width == 80.0  # 20 * 4
         assert block.ideal_face_height == round(80.0 * GOLDEN_RATIO, 2)
         assert block.ideal_mouth_width == 30.0  # 20 * 1.5
-        assert block.ideal_length_from_width == round(100.0 * GOLDEN_RATIO, 2)
 
     def test_block_3_formulas(self) -> None:
         """Block 3 formulas produce expected values for known inputs."""
@@ -216,7 +214,6 @@ class TestBlockComputations:
         assert block.ideal_face_width == 60.0  # 15 * 4
         assert block.ideal_face_height == round(60.0 * GOLDEN_RATIO, 2)
         assert block.ideal_mouth_width == 22.5  # 15 * 1.5
-        assert block.ideal_length_from_width == round(100.0 * GOLDEN_RATIO, 2)
 
 
 class TestDeviationComputation:
@@ -319,11 +316,9 @@ class TestConsensusComputation:
         assert consensus.ideal_face_width == expected_width
         assert consensus.ideal_face_height == expected_height
         assert consensus.ideal_mouth_width == expected_mouth
-        # Only block_1 has ideal_length_from_width
-        assert consensus.ideal_length_from_width == block_1.ideal_length_from_width
 
-    def test_consensus_averages_length_from_width(self) -> None:
-        """Consensus averages length_from_width when all blocks provide it."""
+    def test_consensus_has_no_length_from_width(self) -> None:
+        """ConsensusResult no longer contains ideal_length_from_width field."""
         calc = VisagismCalculator(
             eye_width=10.0,
             inter_ocular_distance=20.0,
@@ -334,13 +329,12 @@ class TestConsensusComputation:
             middle_third=60.0,
             upper_third=40.0,
         )
+        block_1 = calc._compute_block_1()
         block_2 = calc._compute_block_2()
         block_3 = calc._compute_block_3()
 
-        consensus = calc._compute_consensus([block_2, block_3])
-        # Both blocks have the same ideal_length_from_width (based on actual face width)
-        expected = round(100.0 * GOLDEN_RATIO, 2)
-        assert consensus.ideal_length_from_width == expected
+        consensus = calc._compute_consensus([block_1, block_2, block_3])
+        assert not hasattr(consensus, "ideal_length_from_width")
 
 
 class TestBestBlockSelection:
@@ -680,6 +674,381 @@ class TestFromLandmarks:
         assert calc._measurements.upper_third == 36.0
 
 
+class TestGlobalFaceHeightProportion:
+    """Test suite for global face height proportion computation (Tweak 1)."""
+
+    def test_ideal_face_height_from_width_computed(self) -> None:
+        """Global ideal face height equals face_width * GOLDEN_RATIO."""
+        calc = VisagismCalculator(
+            eye_width=10.0,
+            inter_ocular_distance=20.0,
+            nose_width=15.0,
+            mouth_width=30.0,
+            face_width=100.0,
+            lower_third=50.0,
+            middle_third=60.0,
+            upper_third=40.0,
+        )
+        result = calc.calculate()
+        expected = round(100.0 * GOLDEN_RATIO, 2)
+        assert result.ideal_face_height_from_width == expected
+
+    def test_global_face_height_deviation_populated(self) -> None:
+        """Global face height deviation is a DeviationResult."""
+        calc = VisagismCalculator(
+            eye_width=10.0,
+            inter_ocular_distance=20.0,
+            nose_width=15.0,
+            mouth_width=30.0,
+            face_width=100.0,
+            lower_third=50.0,
+            middle_third=60.0,
+            upper_third=40.0,
+        )
+        result = calc.calculate()
+        assert isinstance(result.global_face_height_deviation, DeviationResult)
+        assert result.global_face_height_deviation.measurement_name == "face_height"
+
+    def test_global_face_height_deviation_without_upper_third(self) -> None:
+        """Global deviation handles None total_face_height gracefully."""
+        calc = VisagismCalculator(
+            eye_width=10.0,
+            inter_ocular_distance=20.0,
+            nose_width=15.0,
+            mouth_width=30.0,
+            face_width=100.0,
+            lower_third=50.0,
+            middle_third=60.0,
+            upper_third=None,
+        )
+        result = calc.calculate()
+        assert result.global_face_height_deviation.actual is None
+        assert result.global_face_height_deviation.deviation_percent is None
+        assert result.global_face_height_deviation.is_flagged is False
+
+
+class TestRejectedReferenceFlags:
+    """Test suite for rejected reference flags computation (Tweak 2)."""
+
+    def test_large_eyes_flag(self) -> None:
+        """When face is smaller than eye-width predicts, eyes are large."""
+        # Small face relative to eye width -> negative deviations
+        calc = VisagismCalculator(
+            eye_width=30.0,
+            inter_ocular_distance=20.0,
+            nose_width=15.0,
+            mouth_width=30.0,
+            face_width=80.0,
+            lower_third=40.0,
+            middle_third=40.0,
+            upper_third=40.0,
+        )
+        result = calc.calculate()
+        # Eye Width block should be best or rejected; if rejected, flag large_eyes
+        if result.best_block_name != "Eye Width Reference":
+            assert "large_eyes" in result.rejected_reference_flags
+
+    def test_small_eyes_flag(self) -> None:
+        """When face is larger than eye-width predicts, eyes are small."""
+        # Large face relative to eye width -> positive deviations
+        calc = VisagismCalculator(
+            eye_width=10.0,
+            inter_ocular_distance=20.0,
+            nose_width=15.0,
+            mouth_width=30.0,
+            face_width=200.0,
+            lower_third=100.0,
+            middle_third=100.0,
+            upper_third=100.0,
+        )
+        result = calc.calculate()
+        if result.best_block_name != "Eye Width Reference":
+            assert "small_eyes" in result.rejected_reference_flags
+
+    def test_wide_set_eyes_flag(self) -> None:
+        """When face is smaller than inter-ocular predicts, eyes are wide-set."""
+        calc = VisagismCalculator(
+            eye_width=10.0,
+            inter_ocular_distance=40.0,
+            nose_width=15.0,
+            mouth_width=30.0,
+            face_width=80.0,
+            lower_third=40.0,
+            middle_third=40.0,
+            upper_third=40.0,
+        )
+        result = calc.calculate()
+        if result.best_block_name != "Inter-Ocular Distance Reference":
+            assert "wide_set_eyes" in result.rejected_reference_flags
+
+    def test_close_set_eyes_flag(self) -> None:
+        """When face is larger than inter-ocular predicts, eyes are close-set."""
+        calc = VisagismCalculator(
+            eye_width=10.0,
+            inter_ocular_distance=10.0,
+            nose_width=15.0,
+            mouth_width=30.0,
+            face_width=200.0,
+            lower_third=100.0,
+            middle_third=100.0,
+            upper_third=100.0,
+        )
+        result = calc.calculate()
+        if result.best_block_name != "Inter-Ocular Distance Reference":
+            assert "close_set_eyes" in result.rejected_reference_flags
+
+    def test_large_nose_flag(self) -> None:
+        """When face is smaller than nose-width predicts, nose is large."""
+        calc = VisagismCalculator(
+            eye_width=10.0,
+            inter_ocular_distance=20.0,
+            nose_width=30.0,
+            mouth_width=30.0,
+            face_width=80.0,
+            lower_third=40.0,
+            middle_third=40.0,
+            upper_third=40.0,
+        )
+        result = calc.calculate()
+        if result.best_block_name != "Nose Width Reference":
+            assert "large_nose" in result.rejected_reference_flags
+
+    def test_small_nose_flag(self) -> None:
+        """When face is larger than nose-width predicts, nose is small."""
+        calc = VisagismCalculator(
+            eye_width=10.0,
+            inter_ocular_distance=20.0,
+            nose_width=10.0,
+            mouth_width=30.0,
+            face_width=200.0,
+            lower_third=100.0,
+            middle_third=100.0,
+            upper_third=100.0,
+        )
+        result = calc.calculate()
+        if result.best_block_name != "Nose Width Reference":
+            assert "small_nose" in result.rejected_reference_flags
+
+    def test_best_block_not_flagged(self) -> None:
+        """The best block is never in rejected_reference_flags."""
+        calc = VisagismCalculator(
+            eye_width=10.0,
+            inter_ocular_distance=20.0,
+            nose_width=15.0,
+            mouth_width=30.0,
+            face_width=100.0,
+            lower_third=50.0,
+            middle_third=60.0,
+            upper_third=40.0,
+        )
+        result = calc.calculate()
+        best_name = result.best_block_name
+        flag_map = {
+            "Eye Width Reference": ["large_eyes", "small_eyes"],
+            "Inter-Ocular Distance Reference": [
+                "wide_set_eyes",
+                "close_set_eyes",
+            ],
+            "Nose Width Reference": ["large_nose", "small_nose"],
+        }
+        best_flags = flag_map.get(best_name, [])
+        for flag in best_flags:
+            assert flag not in result.rejected_reference_flags
+
+    def test_mixed_deviations_no_flag(self) -> None:
+        """Mixed deviations (not >=2 same sign) produce no flag."""
+        # Use measurements that produce mixed signs for a non-best block
+        calc = VisagismCalculator(
+            eye_width=25.0,
+            inter_ocular_distance=25.0,
+            nose_width=25.0,
+            mouth_width=37.5,
+            face_width=100.0,
+            lower_third=50.0,
+            middle_third=60.0,
+            upper_third=40.0,
+        )
+        result = calc.calculate()
+        # At least one non-best block should exist
+        assert len(result.rejected_reference_flags) <= 2
+
+    def test_rejected_flags_empty_when_all_same(self) -> None:
+        """When all blocks have similar deviations, flags may be empty."""
+        calc = VisagismCalculator(
+            eye_width=25.0,
+            inter_ocular_distance=25.0,
+            nose_width=25.0,
+            mouth_width=37.5,
+            face_width=100.0,
+            lower_third=54.0,
+            middle_third=54.0,
+            upper_third=54.0,
+        )
+        result = calc.calculate()
+        assert isinstance(result.rejected_reference_flags, list)
+
+    def test_unknown_block_name_skipped(self) -> None:
+        """Blocks with unknown names are skipped without error."""
+        custom_block = ReferenceBlock(
+            block_name="Unknown Block",
+            reference_measurement="custom",
+            reference_value=10.0,
+            ideal_face_width=40.0,
+            ideal_face_height=60.0,
+            ideal_mouth_width=15.0,
+            deviations=[
+                DeviationResult(
+                    measurement_name="face_width",
+                    actual=80.0,
+                    ideal=40.0,
+                    deviation_percent=100.0,
+                    is_flagged=True,
+                ),
+                DeviationResult(
+                    measurement_name="face_height",
+                    actual=120.0,
+                    ideal=60.0,
+                    deviation_percent=100.0,
+                    is_flagged=True,
+                ),
+                DeviationResult(
+                    measurement_name="mouth_width",
+                    actual=30.0,
+                    ideal=15.0,
+                    deviation_percent=100.0,
+                    is_flagged=True,
+                ),
+            ],
+        )
+        best_block = ReferenceBlock(
+            block_name="Eye Width Reference",
+            reference_measurement="eye_width",
+            reference_value=10.0,
+            ideal_face_width=40.0,
+            ideal_face_height=60.0,
+            ideal_mouth_width=15.0,
+            deviations=[],
+        )
+        flags = VisagismCalculator._compute_rejected_reference_flags(
+            [custom_block, best_block], best_block
+        )
+        assert flags == []
+
+
+class TestFacialThirdsProportion:
+    """Test suite for facial thirds proportion flags (Tweak 3)."""
+
+    def test_balanced_thirds_no_flags(self) -> None:
+        """Equal thirds produce no proportion flags."""
+        calc = VisagismCalculator(
+            eye_width=10.0,
+            inter_ocular_distance=20.0,
+            nose_width=15.0,
+            mouth_width=30.0,
+            face_width=100.0,
+            lower_third=50.0,
+            middle_third=50.0,
+            upper_third=50.0,
+        )
+        result = calc.calculate()
+        assert result.thirds_proportion_flags == []
+
+    def test_large_upper_third_flagged(self) -> None:
+        """Upper third > ideal by >10% produces large_upper_third."""
+        calc = VisagismCalculator(
+            eye_width=10.0,
+            inter_ocular_distance=20.0,
+            nose_width=15.0,
+            mouth_width=30.0,
+            face_width=100.0,
+            lower_third=30.0,
+            middle_third=30.0,
+            upper_third=50.0,
+        )
+        result = calc.calculate()
+        assert "large_upper_third" in result.thirds_proportion_flags
+
+    def test_small_lower_third_flagged(self) -> None:
+        """Lower third < ideal by >10% produces small_lower_third."""
+        calc = VisagismCalculator(
+            eye_width=10.0,
+            inter_ocular_distance=20.0,
+            nose_width=15.0,
+            mouth_width=30.0,
+            face_width=100.0,
+            lower_third=20.0,
+            middle_third=50.0,
+            upper_third=50.0,
+        )
+        result = calc.calculate()
+        assert "small_lower_third" in result.thirds_proportion_flags
+
+    def test_large_middle_third_flagged(self) -> None:
+        """Middle third > ideal by >10% produces large_middle_third."""
+        calc = VisagismCalculator(
+            eye_width=10.0,
+            inter_ocular_distance=20.0,
+            nose_width=15.0,
+            mouth_width=30.0,
+            face_width=100.0,
+            lower_third=30.0,
+            middle_third=50.0,
+            upper_third=30.0,
+        )
+        result = calc.calculate()
+        assert "large_middle_third" in result.thirds_proportion_flags
+
+    def test_without_upper_third_compares_two_halves(self) -> None:
+        """When upper_third is None, compare middle and lower against half."""
+        calc = VisagismCalculator(
+            eye_width=10.0,
+            inter_ocular_distance=20.0,
+            nose_width=15.0,
+            mouth_width=30.0,
+            face_width=100.0,
+            lower_third=30.0,
+            middle_third=70.0,
+            upper_third=None,
+        )
+        result = calc.calculate()
+        # middle=70, lower=30, partial_total=100, ideal=50
+        # middle is 40% above ideal -> large_middle_third
+        # lower is 40% below ideal -> small_lower_third
+        assert "large_middle_third" in result.thirds_proportion_flags
+        assert "small_lower_third" in result.thirds_proportion_flags
+
+    def test_without_upper_third_balanced_no_flags(self) -> None:
+        """Balanced middle and lower thirds with no upper produce no flags."""
+        calc = VisagismCalculator(
+            eye_width=10.0,
+            inter_ocular_distance=20.0,
+            nose_width=15.0,
+            mouth_width=30.0,
+            face_width=100.0,
+            lower_third=50.0,
+            middle_third=50.0,
+            upper_third=None,
+        )
+        result = calc.calculate()
+        assert result.thirds_proportion_flags == []
+
+    def test_thirds_within_threshold_not_flagged(self) -> None:
+        """Deviations within 10% threshold are not flagged."""
+        calc = VisagismCalculator(
+            eye_width=10.0,
+            inter_ocular_distance=20.0,
+            nose_width=15.0,
+            mouth_width=30.0,
+            face_width=100.0,
+            lower_third=48.0,
+            middle_third=50.0,
+            upper_third=52.0,
+        )
+        result = calc.calculate()
+        # ideal = 150/3 = 50; deviations: -4%, 0%, +4% — all within 10%
+        assert result.thirds_proportion_flags == []
+
+
 class TestDataclassStructures:
     """Test suite for dataclass instantiation and defaults."""
 
@@ -715,8 +1084,8 @@ class TestDataclassStructures:
         )
         assert cr.deviations == []
 
-    def test_visagism_analysis_default_flagged(self) -> None:
-        """VisagismAnalysis defaults all_flagged_deviations to empty list."""
+    def test_visagism_analysis_new_fields(self) -> None:
+        """VisagismAnalysis includes new Tweak 1-3 fields."""
         calc = VisagismCalculator(
             eye_width=10.0,
             inter_ocular_distance=20.0,
@@ -728,5 +1097,9 @@ class TestDataclassStructures:
             upper_third=40.0,
         )
         result = calc.calculate()
-        # all_flagged_deviations is populated by calculate(), not defaulted
-        assert isinstance(result.all_flagged_deviations, list)
+        assert hasattr(result, "ideal_face_height_from_width")
+        assert hasattr(result, "global_face_height_deviation")
+        assert hasattr(result, "rejected_reference_flags")
+        assert hasattr(result, "thirds_proportion_flags")
+        assert isinstance(result.rejected_reference_flags, list)
+        assert isinstance(result.thirds_proportion_flags, list)

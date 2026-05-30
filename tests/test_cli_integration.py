@@ -168,8 +168,9 @@ class TestCliIntegration:
 
         captured = capsys.readouterr()
         assert "=== FACIAL MEASUREMENTS ===" in captured.out
-        assert "=== BEST REFERENCE BLOCK" in captured.out
-        assert "=== FLAGGED DEVIATIONS ===" in captured.out
+        assert "=== PROPORTION ANALYSIS ===" in captured.out
+        assert "Best Reference:" in captured.out
+        assert "Deviations from Best Reference:" in captured.out
 
     def test_report_file_is_created(
         self, mock_config: MagicMock
