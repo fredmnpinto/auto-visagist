@@ -1,10 +1,11 @@
 # Functional Specification: Facial Visagism Analysis System
 
-> **Version**: 1.5.3 | **Date**: 2026-05-30 | **Author**: Documenter Agent | **Status**: Draft
+> **Version**: 1.5.4 | **Date**: 2026-06-01 | **Author**: Documenter Agent | **Status**: Draft
 
 ## Change Log
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.5.4 | 2026-06-01 | Documenter Agent | Added FR-017 (Debug Mode, Could priority, Implemented). Added `--debug` CLI flag to `visagism.py` that outputs diagnostic detail woven into existing report sections (FACIAL MEASUREMENTS and PROPORTION ANALYSIS). Shows landmark indices, calculation formulas, intermediate values, all three reference blocks with selection scores, and full deviation tables. Debug lines use `→` marker and are indented within existing sections. Backward compatible: `debug=False` produces identical output to before. Updated CLI usage (§6.1), input parameters (§6.2), Report Generator component (§5.1), and unit test strategy (§7.1). Commit `05d10b0`. |
 | 1.5.3 | 2026-05-30 | Documenter Agent | Document visagist calculator tweaks: global face height proportion (`ideal_face_height_from_width`), rejected reference flagging for non-best blocks, facial thirds proportion analysis, report formatter consolidation into single `=== PROPORTION ANALYSIS ===` section. Updated FR-007 and FR-011 acceptance criteria. Removed `ideal_length_from_width` from `ReferenceBlock` and `ConsensusResult`. Added new fields to `VisagismAnalysis` datamodel. |
 | 1.5.2 | 2026-05-28 | Documenter Agent | Documented hairline detection evaluation results (§7.6). Compared Canny vs No-Canny approaches against 9-image ground-truth dataset: Canny achieves 62% lower mean error (38.3px vs 100.3px). Updated FR-013 acceptance criteria to reflect Canny as primary method with No-Canny fallback. Added risk §8.1.7 on hairline detection accuracy variance. |
 | 1.5.1 | 2026-05-28 | Documenter Agent | Updated FR-007, Architecture (§5.1), and Data Models (§5.2) to reflect "best reference block" approach. Replaced consensus averaging with selection of the single reference block having the smallest overall deviation. Added `best_block` and `best_block_name` fields to `VisagismAnalysis`. Updated `Visagist Calculator` component description and FR-011 acceptance criteria. |
@@ -106,6 +107,7 @@ A working prototype that:
 | FR-013 | Hairline Detection via Edge Detection | The system shall estimate the hairline position using edge detection on the forehead region to support facial third measurements | Must | Visagism Methodology | FR-003 | Implemented |
 | FR-015 | Hairline Detection Diagnostic Tool | The system shall provide a diagnostic script that visualizes and saves intermediate hairline detection data to disk for debugging and validation of FR-013 | Could | Development Team | FR-013 | Implemented |
 | FR-016 | Landmark Evaluation Tool | The system shall provide a dual-mode utility for creating ground-truth facial landmark annotations (68 points + hairline) and evaluating predicted landmarks against ground truth with per-landmark, per-region, and NME metrics | Could | Development Team | FR-003, FR-013 | Implemented |
+| FR-017 | Debug Mode | The system shall support a `--debug` CLI flag that outputs diagnostic detail woven into existing report sections (FACIAL MEASUREMENTS and PROPORTION ANALYSIS) without altering normal output when disabled | Could | Development Team | FR-011 | Implemented |
 
 ### Detailed Acceptance Criteria
 
@@ -325,6 +327,31 @@ A working prototype that:
 - [x] Gracefully skip unmatched pairs, malformed JSON, and missing hairline values
 **Status**: Implemented
 
+#### FR-017: Debug Mode
+**Description**: The system shall support a `--debug` CLI flag that outputs diagnostic detail woven into existing report sections (FACIAL MEASUREMENTS and PROPORTION ANALYSIS) without altering normal output when disabled.
+**Priority**: Could
+**Source**: Development Team (diagnostic support for FR-011)
+**Dependencies**: FR-011
+**Acceptance Criteria**:
+- [x] Add `--debug` boolean flag to CLI argument parser in `visagism/cli.py`
+- [x] Propagate `config.debug` from CLI through to `ReportGenerator` in `visagism.py`
+- [x] When `debug=False`, report output is byte-for-byte identical to pre-debug implementation
+- [x] When `debug=True`, existing `=== FACIAL MEASUREMENTS ===` section includes indented debug lines prefixed with `→` showing:
+  - Landmark indices used for each measurement (e.g., `→ left_eye_width: distance between landmarks 37 and 40`)
+  - Calculation formulas (e.g., `→ Formula: distance(37, 40)`)
+  - Intermediate values (e.g., `→ left_eye_width = 45.2 px, right_eye_width = 47.1 px`)
+- [x] When `debug=True`, existing `=== PROPORTION ANALYSIS ===` section includes indented debug lines prefixed with `→` showing:
+  - All three reference blocks with their selection scores and formulas
+  - Ideal values for each block (ideal_face_width, ideal_face_height, ideal_mouth_width)
+  - Full deviation tables for every measurement in every block
+  - Best block selection rationale
+- [x] Debug lines are indented within existing sections; no separate debug-only sections are created
+- [x] Debug output uses `→` marker consistently for all diagnostic lines
+- [x] `FacialMeasurements` dataclass exposes debug fields (`left_eye_width`, `right_eye_width`, `avg_eyebrow_y`, `hairline_y`) populated during calculation
+- [x] Unit tests cover CLI `--debug` flag parsing, debug field population in `VisagismCalculator`, and debug line rendering in `ReportGenerator`
+**Status**: Implemented
+**Note**: Implemented across `visagism/cli.py`, `visagism/visagism_calculator.py`, `visagism/report_formatter.py`, and `visagism.py`. Commit `05d10b0`.
+
 ---
 
 ## 4. Non-Functional Requirements
@@ -357,7 +384,7 @@ A working prototype that:
 | Face Shape Classifier | Classify face into 7 shape categories | Apply visagism rules to determine face shape |
 | Visagism Analyzer | Compare proportions to golden ratio | Identify deviations and generate analysis |
 | Visualization Module | Display landmarks and measurements | Overlay points/lines on image, create output visualization |
-| Report Generator | Create analysis reports | Compile results into text/visual report format |
+| Report Generator | Create analysis reports | Compile results into text/visual report format; supports `--debug` flag to weave diagnostic detail (landmark indices, formulas, intermediate values, all reference blocks with selection scores) into existing FACIAL MEASUREMENTS and PROPORTION ANALYSIS sections using `→` prefixed indented lines |
 | Diagnostic / Demo Scripts | Support debugging and validation of hairline detection | Save intermediate step images, raw numerical data (JSON), per-row CSV profiles, and text summaries to `output/<image_stem>/` for manual inspection and algorithm tuning |
 | Landmark Ground Truth Module | Store and serialize manually-annotated landmark data | Define `LandmarkGroundTruth` dataclass with 68 landmarks, hairline, corrected indices; JSON save/load; region lookup; validation |
 | Landmark Labeler Module | Interactive GUI for manual landmark annotation | OpenCV window with mouse/keyboard callbacks; pre-fill dlib predictions; save/resume ground truth JSON; hairline labeling mode |
@@ -447,7 +474,7 @@ A working prototype that:
 - **Primary Interface**: Command-line interface (CLI)
 - **Diagnostic Scripts**: `scripts/demo_hairline_steps.py` for step-by-step hairline detection visualization and disk output; `scripts/diagnose_hairline.py` for batch diagnostic figures
 - **Landmark Evaluation Tool**: `scripts/landmark_evaluation.py` for interactive ground-truth labeling and batch evaluation
-- **Usage**: `python visagism.py --input <image_path> [--output <output_dir>] [--visualize] [--save-viz] [--hairline]`
+- **Usage**: `python visagism.py --input <image_path> [--output <output_dir>] [--visualize] [--save-viz] [--hairline] [--debug]`
 - **Demo Script Usage**: `python scripts/demo_hairline_steps.py --input <image_path> [--visualize]`
 - **Landmark Evaluation Usage**:
   ```bash
@@ -465,6 +492,9 @@ A working prototype that:
   # Process single image
   python visagism.py --input photos/face.jpg --visualize --hairline
 
+  # Process with debug diagnostics
+  python visagism.py --input photos/face.jpg --debug
+
   # Run hairline diagnostic (headless, saves to output/<image_stem>/)
   python scripts/demo_hairline_steps.py --input photos/face.jpg
   ```
@@ -477,6 +507,7 @@ A working prototype that:
 | --visualize | Flag | No | Display landmark visualization window |
 | --save-viz | Flag | No | Save visualization to file without displaying |
 | --hairline | Flag | No | Enable hairline detection visualization (dashed line) |
+| --debug | Flag | No | Enable diagnostic detail in report output (landmark indices, formulas, intermediate values, all reference blocks) |
 | --mode | String | Yes (landmark_evaluation.py) | Tool mode: `label` or `evaluate` |
 | --input | String (path) | Yes (label mode) | Path to image file or directory |
 | --output | String (path) | No (label mode) | Output directory for ground truth JSON (default: ./ground_truth) |
@@ -517,6 +548,7 @@ A working prototype that:
   - Landmark detection accuracy against manual annotations
   - Proportion calculations with known measurements
   - Visagist calculator: 50 tests covering `VisagismCalculator` initialization, validation, three reference block formulas, deviation computation with 10% threshold flagging, consensus averaging, `from_landmarks()` factory method, and all dataclasses (`FacialMeasurements`, `DeviationResult`, `ReferenceBlock`, `ConsensusResult`, `VisagismAnalysis`) — 100% line coverage
+  - Debug mode: CLI `--debug` flag parsing (`tests/test_cli.py`), debug field population in `FacialMeasurements` (`tests/test_visagism_calculator.py`), and debug line rendering in `ReportGenerator` (`tests/test_report_formatter.py`); verify `debug=False` produces identical output to pre-debug implementation
   - Face shape classification against labeled dataset
   - Golden ratio deviation calculations
   - Error handling scenarios
