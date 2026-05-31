@@ -53,6 +53,10 @@ class FacialMeasurements:
     middle_third: float
     upper_third: Optional[float] = None
     hairline_fallback_used: bool = False
+    left_eye_width: Optional[float] = None
+    right_eye_width: Optional[float] = None
+    avg_eyebrow_y: Optional[float] = None
+    hairline_y: Optional[float] = None
 
     @property
     def total_face_height(self) -> Optional[float]:
@@ -254,6 +258,10 @@ class VisagismCalculator:
         middle_third: float,
         upper_third: Optional[float] = None,
         hairline_fallback_used: bool = False,
+        left_eye_width: Optional[float] = None,
+        right_eye_width: Optional[float] = None,
+        avg_eyebrow_y: Optional[float] = None,
+        hairline_y: Optional[float] = None,
     ) -> None:
         self._measurements = FacialMeasurements(
             eye_width=eye_width,
@@ -265,6 +273,10 @@ class VisagismCalculator:
             middle_third=middle_third,
             upper_third=upper_third,
             hairline_fallback_used=hairline_fallback_used,
+            left_eye_width=left_eye_width,
+            right_eye_width=right_eye_width,
+            avg_eyebrow_y=avg_eyebrow_y,
+            hairline_y=hairline_y,
         )
         self._validate_measurements()
 
@@ -859,4 +871,8 @@ class VisagismCalculator:
             middle_third=middle_third,
             upper_third=upper_third,
             hairline_fallback_used=hairline_fallback_used,
+            left_eye_width=left_eye_width,
+            right_eye_width=right_eye_width,
+            avg_eyebrow_y=avg_eyebrow_y,
+            hairline_y=landmarks.hairline_y,
         )

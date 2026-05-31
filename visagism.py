@@ -92,13 +92,14 @@ def main() -> None:
             print("Warning: Hairline not detected. Upper third estimated from middle third (may reduce accuracy).")
 
         # Console output
-        console_output = ReportFormatter.format_console(analysis)
+        console_output = ReportFormatter.format_console(analysis, debug=config.debug)
         print(console_output)
 
         # Save report
         report_path = ReportFormatter.save_report(
             analysis, config.output_dir, config.input_path.stem,
-            fallback_used=analysis.measurements.hairline_fallback_used
+            fallback_used=analysis.measurements.hairline_fallback_used,
+            debug=config.debug,
         )
         print(f"Saved analysis report: {report_path}")
 

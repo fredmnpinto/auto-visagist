@@ -13,6 +13,7 @@ from typing import List
 from visagism.constants import THIRDS_DEVIATION_THRESHOLD
 from visagism.visagism_calculator import (
     DeviationResult,
+    ReferenceBlock,
     VisagismAnalysis,
 )
 
@@ -25,18 +26,64 @@ REJECTED_FLAG_DESCRIPTIONS = {
     "small_nose": "nose is relatively small",
 }
 
+_MEASUREMENT_FORMULAS = {
+    "eye_width": "avg(dist(36,39), dist(42,45))",
+    "inter_ocular_distance": "dist(39,42)",
+    "nose_width": "dist(31,35)",
+    "mouth_width": "dist(48,54)",
+    "face_width": "dist(0,16)",
+    "lower_third": "abs(33y - 8y)",
+    "middle_third": "abs(avg_eyebrow_y - 33y)",
+    "upper_third": "abs(avg_eyebrow_y - hairline_y)",
+}
+
+_BLOCK_FORMULAS = {
+    "Eye Width Reference": (
+        "ideal_width = eye_width × 4, "
+        "ideal_height = ideal_width × 1.618, "
+        "ideal_mouth = eye_width × 1.5"
+    ),
+    "Inter-Ocular Distance Reference": (
+        "ideal_width = inter_ocular × 4, "
+        "ideal_height = ideal_width × 1.618, "
+        "ideal_mouth = inter_ocular × 1.5"
+    ),
+    "Nose Width Reference": (
+        "ideal_width = nose_width × 4, "
+        "ideal_height = ideal_width × 1.618, "
+        "ideal_mouth = nose_width × 1.5"
+    ),
+}
+
+_BLOCK_DISPLAY_NAMES = {
+    "Eye Width Reference": "Block 1 (Eye Width)",
+    "Inter-Ocular Distance Reference": "Block 2 (Inter-Ocular)",
+    "Nose Width Reference": "Block 3 (Nose Width)",
+}
+
+_BLOCK_REFERENCE_LABELS = {
+    "Eye Width Reference": "eye_width",
+    "Inter-Ocular Distance Reference": "inter_ocular",
+    "Nose Width Reference": "nose_width",
+}
+
 
 class ReportFormatter:
     """Format ``VisagismAnalysis`` results for console and file output."""
 
     @staticmethod
-    def format_console(analysis: VisagismAnalysis) -> str:
+    def format_console(
+        analysis: VisagismAnalysis, debug: bool = False
+    ) -> str:
         """Return human-readable console output.
 
         Parameters
         ----------
         analysis : VisagismAnalysis
             Complete visagism analysis result.
+        debug : bool, optional
+            When True, include diagnostic detail lines woven into the
+            existing sections. By default False.
 
         Returns
         -------
@@ -49,12 +96,52 @@ class ReportFormatter:
         lines.append("=== FACIAL MEASUREMENTS ===")
         m = analysis.measurements
         lines.append(f"  Eye Width: {m.eye_width:.2f} px")
-        lines.append(f"  Inter-Ocular Distance: {m.inter_ocular_distance:.2f} px")
+        if debug:
+            lines.append(
+                f"  → Formula: {_MEASUREMENT_FORMULAS['eye_width']}"
+            )
+            if m.left_eye_width is not None and m.right_eye_width is not None:
+                lines.append(
+                    f"  → Intermediate: left={m.left_eye_width:.2f} px, "
+                    f"right={m.right_eye_width:.2f} px"
+                )
+        lines.append(
+            f"  Inter-Ocular Distance: {m.inter_ocular_distance:.2f} px"
+        )
+        if debug:
+            lines.append(
+                f"  → Formula: {_MEASUREMENT_FORMULAS['inter_ocular_distance']}"
+            )
         lines.append(f"  Nose Width: {m.nose_width:.2f} px")
+        if debug:
+            lines.append(
+                f"  → Formula: {_MEASUREMENT_FORMULAS['nose_width']}"
+            )
         lines.append(f"  Mouth Width: {m.mouth_width:.2f} px")
+        if debug:
+            lines.append(
+                f"  → Formula: {_MEASUREMENT_FORMULAS['mouth_width']}"
+            )
         lines.append(f"  Face Width: {m.face_width:.2f} px")
+        if debug:
+            lines.append(
+                f"  → Formula: {_MEASUREMENT_FORMULAS['face_width']}"
+            )
         lines.append(f"  Lower Third: {m.lower_third:.2f} px")
+        if debug:
+            lines.append(
+                f"  → Formula: {_MEASUREMENT_FORMULAS['lower_third']}"
+            )
         lines.append(f"  Middle Third: {m.middle_third:.2f} px")
+        if debug:
+            lines.append(
+                f"  → Formula: {_MEASUREMENT_FORMULAS['middle_third']}"
+            )
+            if m.avg_eyebrow_y is not None:
+                lines.append(
+                    f"  → Intermediate: avg_eyebrow_y={m.avg_eyebrow_y:.2f} px "
+                    f"(landmarks 17-26)"
+                )
         if m.upper_third is not None:
             if m.hairline_fallback_used:
                 lines.append(
@@ -62,6 +149,23 @@ class ReportFormatter:
                 )
             else:
                 lines.append(f"  Upper Third: {m.upper_third:.2f} px")
+            if debug:
+                lines.append(
+                    f"  → Formula: {_MEASUREMENT_FORMULAS['upper_third']}"
+                )
+                intermediates: List[str] = []
+                if m.avg_eyebrow_y is not None:
+                    intermediates.append(
+                        f"avg_eyebrow_y={m.avg_eyebrow_y:.2f} px"
+                    )
+                if m.hairline_y is not None:
+                    intermediates.append(
+                        f"hairline_y={m.hairline_y:.2f} px"
+                    )
+                if intermediates:
+                    lines.append(
+                        f"  → Intermediate: {', '.join(intermediates)}"
+                    )
         else:
             lines.append("  Upper Third: N/A")
         total = m.total_face_height
@@ -75,7 +179,50 @@ class ReportFormatter:
         lines.append("=== PROPORTION ANALYSIS ===")
         lines.append("")
         lines.append(f"Best Reference: {analysis.best_block_name}")
-        lines.append("")
+
+        if debug:
+            best_score = _block_score(analysis.best_block)
+            lines.append(
+                f"  → Selection: lowest score {best_score:.2f} "
+                f"(sum of abs deviations)"
+            )
+            lines.append("  →")
+            lines.append("  → All Reference Blocks:")
+            for block in [
+                analysis.block_1_eye_width,
+                analysis.block_2_inter_ocular,
+                analysis.block_3_nose_width,
+            ]:
+                score = _block_score(block)
+                display_name = _BLOCK_DISPLAY_NAMES.get(
+                    block.block_name, block.block_name
+                )
+                ref_label = _BLOCK_REFERENCE_LABELS.get(
+                    block.block_name, block.reference_measurement
+                )
+                lines.append(
+                    f"  → {display_name} — Score: {score:.2f}"
+                )
+                lines.append(
+                    f"  →   Reference: {ref_label} = "
+                    f"{block.reference_value:.2f} px"
+                )
+                lines.append(
+                    f"  →   Formulas: {_BLOCK_FORMULAS.get(block.block_name, '')}"
+                )
+                lines.append(
+                    f"  →   Ideal: face_width={block.ideal_face_width:.2f}, "
+                    f"face_height={block.ideal_face_height:.2f}, "
+                    f"mouth_width={block.ideal_mouth_width:.2f}"
+                )
+                lines.append("  →   Deviations:")
+                for dev in block.deviations:
+                    lines.append(
+                        f"  →     {ReportFormatter._format_deviation(dev)}"
+                    )
+            lines.append("")
+        else:
+            lines.append("")
 
         # Deviations from Best Reference
         lines.append("Deviations from Best Reference:")
@@ -170,6 +317,7 @@ class ReportFormatter:
         analysis: VisagismAnalysis,
         image_name: str,
         fallback_used: bool = False,
+        debug: bool = False,
     ) -> str:
         """Return full text report with header.
 
@@ -181,6 +329,8 @@ class ReportFormatter:
             Name of the analysed image file.
         fallback_used : bool, optional
             Whether the hairline fallback was used, by default False.
+        debug : bool, optional
+            When True, include diagnostic detail lines. By default False.
 
         Returns
         -------
@@ -204,7 +354,7 @@ class ReportFormatter:
         lines.append("")
 
         # Body (same as console)
-        lines.append(ReportFormatter.format_console(analysis))
+        lines.append(ReportFormatter.format_console(analysis, debug=debug))
 
         # Footer
         lines.append("")
@@ -220,6 +370,7 @@ class ReportFormatter:
         output_dir: Path,
         image_stem: str,
         fallback_used: bool = False,
+        debug: bool = False,
     ) -> Path:
         """Save report to ``analysis_report_[timestamp].txt`` in ``output_dir``.
 
@@ -233,6 +384,8 @@ class ReportFormatter:
             Stem of the input image filename (used in the report header).
         fallback_used : bool, optional
             Whether the hairline fallback was used, by default False.
+        debug : bool, optional
+            When True, include diagnostic detail lines. By default False.
 
         Returns
         -------
@@ -245,7 +398,8 @@ class ReportFormatter:
         report_path = output_dir / filename
 
         report_content = ReportFormatter.format_text_report(
-            analysis, image_name=image_stem, fallback_used=fallback_used
+            analysis, image_name=image_stem, fallback_used=fallback_used,
+            debug=debug,
         )
         report_path.write_text(report_content, encoding="utf-8")
 
@@ -276,3 +430,24 @@ class ReportFormatter:
             f"{dev.measurement_name}: actual={dev.actual:.2f}, "
             f"ideal={dev.ideal:.2f}, dev={dev.deviation_percent}% {status}"
         )
+
+
+def _block_score(block: ReferenceBlock) -> float:
+    """Compute the sum of absolute deviation percentages for a block.
+
+    Parameters
+    ----------
+    block : ReferenceBlock
+        The reference block to score.
+
+    Returns
+    -------
+    float
+        Sum of absolute deviations for all deviations that have a
+        computed percentage.
+    """
+    return sum(
+        abs(dev.deviation_percent)
+        for dev in block.deviations
+        if dev.deviation_percent is not None
+    )

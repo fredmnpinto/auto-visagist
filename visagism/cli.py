@@ -39,6 +39,7 @@ class CliConfig:
     kernel_size: int = 7
     canny_low: int = 30
     canny_high: int = 60
+    debug: bool = False
 
 
 class CliParser:
@@ -120,6 +121,11 @@ class CliParser:
             default=60,
             help="Upper Canny threshold for hairline detection (default: 60)",
         )
+        parser.add_argument(
+            "--debug",
+            action="store_true",
+            help="Enable debug output with diagnostic details",
+        )
 
         args = parser.parse_args(argv)
 
@@ -132,4 +138,5 @@ class CliParser:
             kernel_size=args.kernel_size,
             canny_low=args.canny_low,
             canny_high=args.canny_high,
+            debug=args.debug,
         )

@@ -23,6 +23,7 @@ class TestCliParser:
         assert config.kernel_size == 7
         assert config.canny_low == 30
         assert config.canny_high == 60
+        assert config.debug is False
 
     def test_parse_short_form(self) -> None:
         """Test parsing with short form -i."""
@@ -40,6 +41,7 @@ class TestCliParser:
             "--kernel-size", "5",
             "--canny-low", "20",
             "--canny-high", "60",
+            "--debug",
         ])
         assert config.input_path == Path("photo.jpg")
         assert config.output_dir == Path("results")
@@ -49,6 +51,7 @@ class TestCliParser:
         assert config.kernel_size == 5
         assert config.canny_low == 20
         assert config.canny_high == 60
+        assert config.debug is True
 
     def test_parse_output_default(self) -> None:
         """Test that output defaults to 'output'."""
@@ -114,3 +117,13 @@ class TestCliParser:
         assert config.kernel_size == 7
         assert config.canny_low == 30
         assert config.canny_high == 60
+
+    def test_parse_debug_flag(self) -> None:
+        """Test --debug flag produces config.debug is True."""
+        config = CliParser.parse(["--input", "photo.jpg", "--debug"])
+        assert config.debug is True
+
+    def test_parse_debug_default(self) -> None:
+        """Test omitting --debug produces config.debug is False."""
+        config = CliParser.parse(["--input", "photo.jpg"])
+        assert config.debug is False

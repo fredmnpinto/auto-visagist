@@ -673,6 +673,23 @@ class TestFromLandmarks:
         # Eyebrow avg y = 116, hairline_y = 80
         assert calc._measurements.upper_third == 36.0
 
+    def test_from_landmarks_populates_debug_fields(self) -> None:
+        """from_landmarks populates debug fields on FacialMeasurements."""
+        landmarks = self._make_landmarks(hairline_y=80)
+        calc = VisagismCalculator.from_landmarks(landmarks)
+
+        assert calc._measurements.left_eye_width is not None
+        assert calc._measurements.right_eye_width is not None
+        assert calc._measurements.avg_eyebrow_y is not None
+        assert calc._measurements.hairline_y == 80
+
+        # Left eye: 36(120,150) to 39(150,150) -> width = 30
+        assert calc._measurements.left_eye_width == 30.0
+        # Right eye: 42(200,150) to 45(230,150) -> width = 30
+        assert calc._measurements.right_eye_width == 30.0
+        # Eyebrow avg y = 116
+        assert calc._measurements.avg_eyebrow_y == 116.0
+
 
 class TestGlobalFaceHeightProportion:
     """Test suite for global face height proportion computation (Tweak 1)."""
