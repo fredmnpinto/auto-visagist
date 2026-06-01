@@ -118,14 +118,6 @@ python visagism.py --input photo.jpg --save-viz --output ./results
 python visagism.py --input photo.jpg --model path/to/model.dat --visualize
 ```
 
-### Hairline Diagnostic
-
-Visualize the hairline detection pipeline step-by-step:
-
-```bash
-python scripts/demo_hairline_steps.py --input <image_path> [--visualize]
-```
-
 ### Landmark Evaluation — Label Mode
 
 Interactively create or correct ground-truth landmark labels:
