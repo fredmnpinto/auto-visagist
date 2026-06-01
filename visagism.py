@@ -19,6 +19,7 @@ import dataclasses
 import sys
 
 from visagism.cli import CliParser
+from visagism.detector_factory import create_landmark_detector
 from visagism.errors import VisagismError
 from visagism.face_detector import FaceDetector
 from visagism.hairline_detector import HairlineDetector
@@ -57,7 +58,7 @@ def main() -> None:
 
         # Detect landmarks (always runs)
         model_path = ModelFinder.find(config.model_path)
-        landmark_detector = LandmarkDetector(model_path)
+        landmark_detector = create_landmark_detector(config.detector, model_path)
         landmarks = landmark_detector.detect(
             img_gray, face_rect, config.input_path
         )
@@ -81,15 +82,21 @@ def main() -> None:
         hairline_y = result["hairline_y"]
         method = result["method"]
         landmarks = dataclasses.replace(landmarks, hairline_y=hairline_y)
-        print(f"Estimated hairline at y={hairline_y} (method={method}, "
-              f"close_k={config.kernel_size}, canny={config.canny_low}/{config.canny_high})")
+        print(
+            f"Estimated hairline at y={hairline_y} (method={method}, "
+            f"close_k={config.kernel_size}, "
+            f"canny={config.canny_low}/{config.canny_high})"
+        )
 
         # Run visagism analysis
         calculator = VisagismCalculator.from_landmarks(landmarks)
         analysis = calculator.calculate()
 
         if analysis.measurements.hairline_fallback_used:
-            print("Warning: Hairline not detected. Upper third estimated from middle third (may reduce accuracy).")
+            print(
+                "Warning: Hairline not detected. Upper third estimated "
+                "from middle third (may reduce accuracy)."
+            )
 
         # Console output
         console_output = ReportFormatter.format_console(analysis, debug=config.debug)

@@ -108,6 +108,14 @@ class LandmarkDetector:
         # Right eye outer corner (landmark 45, 0-indexed)
         right_eye_outer = landmarks_68[45]
 
+        # If any pose landmark is missing, assume frontal
+        if (
+            nose_tip == (-1, -1)
+            or left_eye_outer == (-1, -1)
+            or right_eye_outer == (-1, -1)
+        ):
+            return True
+
         dist_left = math.dist(nose_tip, left_eye_outer)
         dist_right = math.dist(nose_tip, right_eye_outer)
 

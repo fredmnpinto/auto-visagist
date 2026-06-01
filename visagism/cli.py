@@ -40,6 +40,7 @@ class CliConfig:
     canny_low: int = 30
     canny_high: int = 60
     debug: bool = False
+    detector: str = "dlib"
 
 
 class CliParser:
@@ -69,8 +70,10 @@ class CliParser:
             epilog=(
                 "Examples:\n"
                 "  python visagism.py --input photo.jpg --visualize\n"
-                "  python visagism.py --input photo.jpg --save-viz --output ./results\n"
-                "  python visagism.py --input photo.jpg --kernel-size 5 --canny-low 20 --canny-high 60"
+                "  python visagism.py --input photo.jpg --save-viz "
+                "--output ./results\n"
+                "  python visagism.py --input photo.jpg --kernel-size 5 "
+                "--canny-low 20 --canny-high 60"
             ),
             formatter_class=argparse.RawDescriptionHelpFormatter,
         )
@@ -107,7 +110,10 @@ class CliParser:
             "--kernel-size",
             type=int,
             default=7,
-            help="Morphological closing kernel size for hairline detection (default: 7, 0=disable)",
+            help=(
+                "Morphological closing kernel size for hairline detection "
+                "(default: 7, 0=disable)"
+            ),
         )
         parser.add_argument(
             "--canny-low",
@@ -126,6 +132,12 @@ class CliParser:
             action="store_true",
             help="Enable debug output with diagnostic details",
         )
+        parser.add_argument(
+            "--detector",
+            choices=["dlib", "nonml"],
+            default="dlib",
+            help="Landmark detector to use (default: dlib)",
+        )
 
         args = parser.parse_args(argv)
 
@@ -139,4 +151,5 @@ class CliParser:
             canny_low=args.canny_low,
             canny_high=args.canny_high,
             debug=args.debug,
+            detector=args.detector,
         )

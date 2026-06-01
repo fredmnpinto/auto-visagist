@@ -24,6 +24,7 @@ class TestCliParser:
         assert config.canny_low == 30
         assert config.canny_high == 60
         assert config.debug is False
+        assert config.detector == "dlib"
 
     def test_parse_short_form(self) -> None:
         """Test parsing with short form -i."""
@@ -127,3 +128,23 @@ class TestCliParser:
         """Test omitting --debug produces config.debug is False."""
         config = CliParser.parse(["--input", "photo.jpg"])
         assert config.debug is False
+
+    def test_parse_detector_dlib(self) -> None:
+        """Test --detector dlib."""
+        config = CliParser.parse(["--input", "photo.jpg", "--detector", "dlib"])
+        assert config.detector == "dlib"
+
+    def test_parse_detector_nonml(self) -> None:
+        """Test --detector nonml."""
+        config = CliParser.parse(["--input", "photo.jpg", "--detector", "nonml"])
+        assert config.detector == "nonml"
+
+    def test_parse_detector_default(self) -> None:
+        """Test default detector is dlib."""
+        config = CliParser.parse(["--input", "photo.jpg"])
+        assert config.detector == "dlib"
+
+    def test_parse_invalid_detector_raises_error(self) -> None:
+        """Test invalid --detector raises SystemExit."""
+        with pytest.raises(SystemExit):
+            CliParser.parse(["--input", "photo.jpg", "--detector", "invalid"])

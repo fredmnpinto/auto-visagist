@@ -42,6 +42,7 @@ def mock_config(tmp_path: Path) -> MagicMock:
     config.kernel_size = 7
     config.canny_low = 30
     config.canny_high = 60
+    config.detector = "dlib"
     return config
 
 
@@ -132,8 +133,8 @@ class TestCliIntegration:
                 return_value=Path("/fake/model.dat"),
             ),
             patch(
-                "visagism.landmark_detector.LandmarkDetector"
-            ) as mock_landmark_cls,
+                "visagism.detector_factory.create_landmark_detector"
+            ) as mock_factory,
             patch(
                 "visagism.landmark_detector.LandmarkDetector.check_pose",
                 return_value=True,
@@ -150,7 +151,7 @@ class TestCliIntegration:
 
             mock_landmark = MagicMock()
             mock_landmark.detect.return_value = mock_landmarks
-            mock_landmark_cls.return_value = mock_landmark
+            mock_factory.return_value = mock_landmark
 
             mock_hairline = MagicMock()
             mock_hairline.detect.return_value = {"hairline_y": 80, "method": "edge"}
@@ -194,8 +195,8 @@ class TestCliIntegration:
         """Warning is printed when hairline is not detected."""
         with (
             patch(
-                "visagism.landmark_detector.LandmarkDetector"
-            ) as mock_landmark_cls,
+                "visagism.detector_factory.create_landmark_detector"
+            ) as mock_factory,
             patch(
                 "visagism.hairline_detector.HairlineDetector"
             ) as mock_hairline_cls,
@@ -203,7 +204,7 @@ class TestCliIntegration:
 
             mock_landmark = MagicMock()
             mock_landmark.detect.return_value = mock_landmarks_no_hairline
-            mock_landmark_cls.return_value = mock_landmark
+            mock_factory.return_value = mock_landmark
 
             mock_hairline = MagicMock()
             mock_hairline.detect.return_value = {

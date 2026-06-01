@@ -25,11 +25,11 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
+from visagism.detector_factory import create_landmark_detector  # noqa: E402
 from visagism.errors import VisagismError  # noqa: E402
 from visagism.face_detector import FaceDetector  # noqa: E402
 from visagism.hairline_detector import HairlineDetector  # noqa: E402
 from visagism.image_loader import ImageLoader  # noqa: E402
-from visagism.landmark_detector import LandmarkDetector  # noqa: E402
 from visagism.landmark_evaluator import LandmarkEvaluator  # noqa: E402
 from visagism.landmark_ground_truth import LandmarkGroundTruth  # noqa: E402
 from visagism.landmark_labeler import LandmarkLabeler  # noqa: E402
@@ -124,7 +124,7 @@ def _run_evaluate_mode(args: argparse.Namespace) -> None:
     # Initialise detection pipeline (once)
     model_path = ModelFinder.find()
     face_detector = FaceDetector()
-    landmark_detector = LandmarkDetector(model_path)
+    landmark_detector = create_landmark_detector(args.detector, model_path)
     hairline_detector = HairlineDetector()
 
     # Load ground truth files by stem (strip _gt suffix)
@@ -271,6 +271,12 @@ def main() -> None:
         "--report", "-r",
         type=str,
         help="Path to save JSON evaluation report (evaluate mode)",
+    )
+    parser.add_argument(
+        "--detector",
+        choices=["dlib", "nonml"],
+        default="dlib",
+        help="Landmark detector to use in evaluate mode (default: dlib)",
     )
 
     args = parser.parse_args()

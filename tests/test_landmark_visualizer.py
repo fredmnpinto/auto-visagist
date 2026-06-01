@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -177,3 +178,156 @@ class TestLandmarkVisualizer:
             (row[:, 0] == 0) & (row[:, 1] == 255) & (row[:, 2] == 255)
         )[0]
         assert len(yellow_pixels) > 0
+
+    def test_draw_landmarks_skips_missing_points(
+        self, sample_image_rgb: np.ndarray, sample_landmarks
+    ) -> None:
+        """Test that (-1, -1) points are skipped when drawing."""
+        viz = LandmarkVisualizer()
+
+        # Create landmarks with some missing points
+        pts = list(sample_landmarks.landmarks_68)
+        pts[5] = (-1, -1)
+        pts[10] = (-1, -1)
+
+        from visagism.constants import REGION_INDICES
+        from visagism.types import LandmarkRegions
+
+        landmarks_by_region: LandmarkRegions = {
+            name: [pts[i] for i in indices]
+            for name, indices in REGION_INDICES.items()
+        }
+        modified_landmarks = type(sample_landmarks)(
+            image_path=sample_landmarks.image_path,
+            face_rect=sample_landmarks.face_rect,
+            landmarks_68=pts,
+            landmarks_by_region=landmarks_by_region,
+        )
+
+        # Should not raise and should return valid image
+        result = viz.draw_landmarks(sample_image_rgb, modified_landmarks)
+        assert isinstance(result, np.ndarray)
+        assert result.shape == sample_image_rgb.shape
+
+    def test_draw_landmarks_skips_missing_connections(
+        self, sample_image_rgb: np.ndarray, sample_landmarks
+    ) -> None:
+        """Test that connections with (-1, -1) endpoints are skipped."""
+        viz = LandmarkVisualizer()
+
+        # Create landmarks with missing points that would be connected
+        pts = list(sample_landmarks.landmarks_68)
+        pts[0] = (-1, -1)  # Jaw start — connected to pt 1
+
+        from visagism.constants import REGION_INDICES
+        from visagism.types import LandmarkRegions
+
+        landmarks_by_region: LandmarkRegions = {
+            name: [pts[i] for i in indices]
+            for name, indices in REGION_INDICES.items()
+        }
+        modified_landmarks = type(sample_landmarks)(
+            image_path=sample_landmarks.image_path,
+            face_rect=sample_landmarks.face_rect,
+            landmarks_68=pts,
+            landmarks_by_region=landmarks_by_region,
+        )
+
+        # Should not raise and should return valid image
+        result = viz.draw_landmarks(sample_image_rgb, modified_landmarks)
+        assert isinstance(result, np.ndarray)
+        assert result.shape == sample_image_rgb.shape
+
+    def test_sparse_landmarks_use_larger_radius(
+        self, sample_image_rgb: np.ndarray, sample_landmarks
+    ) -> None:
+        """Test that sparse landmarks (>50% missing) use larger radius and thickness."""
+        viz = LandmarkVisualizer()
+
+        # Create landmarks with >50% missing (35 points missing)
+        pts = [(-1, -1)] * 35 + [(100 + i, 100 + i // 2) for i in range(35)]
+        landmarks_68 = list(pts)
+
+        from visagism.constants import REGION_INDICES
+        from visagism.types import LandmarkRegions
+
+        landmarks_by_region: LandmarkRegions = {
+            name: [landmarks_68[i] for i in indices]
+            for name, indices in REGION_INDICES.items()
+        }
+        sparse_landmarks = type(sample_landmarks)(
+            image_path=sample_landmarks.image_path,
+            face_rect=sample_landmarks.face_rect,
+            landmarks_68=landmarks_68,
+            landmarks_by_region=landmarks_by_region,
+        )
+
+        with (
+            patch("visagism.landmark_visualizer.cv2.circle") as mock_circle,
+            patch("visagism.landmark_visualizer.cv2.line") as mock_line,
+        ):
+            viz.draw_landmarks(sample_image_rgb, sparse_landmarks)
+
+            # Check that circle was called with radius 6 (3 * 2)
+            # cv2.circle(img, center, radius, color, thickness)
+            circle_calls = [
+                call for call in mock_circle.call_args_list
+                if call.args[2] == 6
+            ]
+            msg = "Expected at least one circle call with radius 6"
+            assert len(circle_calls) > 0, msg
+
+            # Check that line was called with thickness 3 (2 + 1)
+            # cv2.line(img, pt1, pt2, color, thickness)
+            line_calls = [
+                call for call in mock_line.call_args_list
+                if call.args[4] == 3
+            ]
+            msg = "Expected at least one line call with thickness 3"
+            assert len(line_calls) > 0, msg
+
+    def test_full_landmarks_use_normal_radius(
+        self, sample_image_rgb: np.ndarray, sample_landmarks
+    ) -> None:
+        """Test that full landmarks (0% missing) use normal radius and thickness."""
+        viz = LandmarkVisualizer()
+
+        with (
+            patch("visagism.landmark_visualizer.cv2.circle") as mock_circle,
+            patch("visagism.landmark_visualizer.cv2.line") as mock_line,
+        ):
+            viz.draw_landmarks(sample_image_rgb, sample_landmarks)
+
+            # Check that circle was called with radius 3 (normal)
+            # cv2.circle(img, center, radius, color, thickness)
+            circle_calls = [
+                call for call in mock_circle.call_args_list
+                if call.args[2] == 3
+            ]
+            msg = "Expected at least one circle call with radius 3"
+            assert len(circle_calls) > 0, msg
+
+            # Check that line was called with thickness 2 (normal)
+            # cv2.line(img, pt1, pt2, color, thickness)
+            line_calls = [
+                call for call in mock_line.call_args_list
+                if call.args[4] == 2
+            ]
+            msg = "Expected at least one line call with thickness 2"
+            assert len(line_calls) > 0, msg
+
+            # Ensure no circle calls with radius 6 (sparse mode)
+            sparse_circle_calls = [
+                call for call in mock_circle.call_args_list
+                if call.args[2] == 6
+            ]
+            msg = "Did not expect circle calls with radius 6"
+            assert len(sparse_circle_calls) == 0, msg
+
+            # Ensure no line calls with thickness 3 (sparse mode)
+            sparse_line_calls = [
+                call for call in mock_line.call_args_list
+                if call.args[4] == 3
+            ]
+            msg = "Did not expect line calls with thickness 3"
+            assert len(sparse_line_calls) == 0, msg

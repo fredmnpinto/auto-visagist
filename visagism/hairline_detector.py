@@ -66,10 +66,16 @@ class HairlineDetector:
         left_brow = landmarks.landmarks_by_region["left_eyebrow"]
         right_brow = landmarks.landmarks_by_region["right_eyebrow"]
         all_brow_pts = left_brow + right_brow  # 10 points total
-        avg_eyebrow_y = int(np.mean([pt[1] for pt in all_brow_pts]))
+        valid_brow_pts = [pt for pt in all_brow_pts if pt != (-1, -1)]
 
         face_rect = landmarks.face_rect
         fx, fy, fw, fh = face_rect
+
+        if not valid_brow_pts:
+            # Geometric fallback when all eyebrow points are missing
+            avg_eyebrow_y = fy + int(fh * 0.20)
+        else:
+            avg_eyebrow_y = int(np.mean([pt[1] for pt in valid_brow_pts]))
 
         # 2. Define y-bounds for the search region
         upward_shift = int(fh * HAIRLINE_ROI_UPWARD_EXPANSION)

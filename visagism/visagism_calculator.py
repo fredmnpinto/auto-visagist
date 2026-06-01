@@ -827,6 +827,17 @@ class VisagismCalculator:
 
         pts = landmarks.landmarks_68
 
+        # Validate 14 critical anchor points are not missing
+        critical_indices = [
+            0, 8, 16, 31, 33, 35, 36, 39, 42, 45, 48, 54, 19, 24,
+        ]
+        for idx in critical_indices:
+            if pts[idx] == (-1, -1):
+                raise AnalysisError(
+                    f"Critical landmark {idx} is missing (-1, -1). "
+                    "Cannot compute facial measurements."
+                )
+
         # Eye widths — average of left and right eyes
         left_eye_width = math.dist(pts[36], pts[39])
         right_eye_width = math.dist(pts[42], pts[45])
@@ -848,7 +859,12 @@ class VisagismCalculator:
         lower_third = abs(pts[33][1] - pts[8][1])
 
         # Middle third — eyebrow line to nose base
-        eyebrow_points = pts[17:27]
+        # Filter out missing eyebrow points for non-ML detector compatibility
+        eyebrow_points = [p for p in pts[17:27] if p != (-1, -1)]
+        if not eyebrow_points:
+            raise AnalysisError(
+                "No valid eyebrow landmarks found. Cannot compute middle third."
+            )
         avg_eyebrow_y = sum(p[1] for p in eyebrow_points) / len(eyebrow_points)
         middle_third = abs(avg_eyebrow_y - pts[33][1])
 

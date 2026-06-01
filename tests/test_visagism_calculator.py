@@ -605,6 +605,77 @@ class TestFromLandmarks:
         with pytest.raises(AnalysisError, match="Expected 68 landmarks"):
             VisagismCalculator.from_landmarks(landmarks)
 
+    def test_from_landmarks_rejects_missing_critical_point(self) -> None:
+        """AnalysisError is raised when a critical landmark is (-1, -1)."""
+        landmarks = self._make_landmarks()
+        # Set a critical point to missing
+        pts = list(landmarks.landmarks_68)
+        pts[33] = (-1, -1)
+
+        from visagism.constants import REGION_INDICES
+
+        landmarks_by_region: LandmarkRegions = {
+            name: [pts[i] for i in indices]
+            for name, indices in REGION_INDICES.items()
+        }
+        bad_landmarks = FacialLandmarks(
+            image_path=landmarks.image_path,
+            face_rect=landmarks.face_rect,
+            landmarks_68=pts,
+            landmarks_by_region=landmarks_by_region,
+        )
+        with pytest.raises(AnalysisError, match="Critical landmark 33 is missing"):
+            VisagismCalculator.from_landmarks(bad_landmarks)
+
+    def test_from_landmarks_rejects_missing_eyebrow_points(self) -> None:
+        """AnalysisError is raised when all eyebrow points are (-1, -1)."""
+        landmarks = self._make_landmarks()
+        pts = list(landmarks.landmarks_68)
+        # Set all eyebrow points to missing
+        for idx in range(17, 27):
+            pts[idx] = (-1, -1)
+
+        from visagism.constants import REGION_INDICES
+
+        landmarks_by_region: LandmarkRegions = {
+            name: [pts[i] for i in indices]
+            for name, indices in REGION_INDICES.items()
+        }
+        bad_landmarks = FacialLandmarks(
+            image_path=landmarks.image_path,
+            face_rect=landmarks.face_rect,
+            landmarks_68=pts,
+            landmarks_by_region=landmarks_by_region,
+        )
+        # Landmark 19 is critical, so the critical-check error fires first
+        with pytest.raises(AnalysisError, match="Critical landmark 19 is missing"):
+            VisagismCalculator.from_landmarks(bad_landmarks)
+
+    def test_from_landmarks_allows_partial_eyebrow_points(self) -> None:
+        """from_landmarks works when some non-critical eyebrow points are missing."""
+        landmarks = self._make_landmarks()
+        pts = list(landmarks.landmarks_68)
+        # Set only non-critical eyebrow points to missing
+        # Critical eyebrow indices are 19 and 24; keep those present
+        for idx in (17, 18, 20, 21, 22, 23, 25, 26):
+            pts[idx] = (-1, -1)
+
+        from visagism.constants import REGION_INDICES
+
+        landmarks_by_region: LandmarkRegions = {
+            name: [pts[i] for i in indices]
+            for name, indices in REGION_INDICES.items()
+        }
+        partial_landmarks = FacialLandmarks(
+            image_path=landmarks.image_path,
+            face_rect=landmarks.face_rect,
+            landmarks_68=pts,
+            landmarks_by_region=landmarks_by_region,
+        )
+        # Should not raise — uses remaining critical eyebrow points
+        calc = VisagismCalculator.from_landmarks(partial_landmarks)
+        assert calc._measurements.middle_third > 0
+
     def test_from_landmarks_eye_width_average(self) -> None:
         """Eye width is the average of left and right eye widths."""
         landmarks = self._make_landmarks()

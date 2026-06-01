@@ -252,3 +252,35 @@ class TestLandmarkDetector:
         landmarks_68 = [(0, 0)] * 68
         # All points at origin, dist_right = 0
         assert LandmarkDetector.check_pose(landmarks_68) is True
+
+    def test_check_pose_missing_nose_tip_returns_true(self) -> None:
+        """If nose tip (30) is (-1, -1), assume frontal."""
+        landmarks_68 = [(0, 0)] * 68
+        landmarks_68[30] = (-1, -1)
+        landmarks_68[36] = (80, 90)
+        landmarks_68[45] = (120, 90)
+        assert LandmarkDetector.check_pose(landmarks_68) is True
+
+    def test_check_pose_missing_left_eye_returns_true(self) -> None:
+        """If left eye outer corner (36) is (-1, -1), assume frontal."""
+        landmarks_68 = [(0, 0)] * 68
+        landmarks_68[30] = (100, 100)
+        landmarks_68[36] = (-1, -1)
+        landmarks_68[45] = (120, 90)
+        assert LandmarkDetector.check_pose(landmarks_68) is True
+
+    def test_check_pose_missing_right_eye_returns_true(self) -> None:
+        """If right eye outer corner (45) is (-1, -1), assume frontal."""
+        landmarks_68 = [(0, 0)] * 68
+        landmarks_68[30] = (100, 100)
+        landmarks_68[36] = (80, 90)
+        landmarks_68[45] = (-1, -1)
+        assert LandmarkDetector.check_pose(landmarks_68) is True
+
+    def test_check_pose_all_pose_landmarks_missing_returns_true(self) -> None:
+        """If all pose landmarks are (-1, -1), assume frontal."""
+        landmarks_68 = [(0, 0)] * 68
+        landmarks_68[30] = (-1, -1)
+        landmarks_68[36] = (-1, -1)
+        landmarks_68[45] = (-1, -1)
+        assert LandmarkDetector.check_pose(landmarks_68) is True

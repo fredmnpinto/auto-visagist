@@ -42,6 +42,10 @@ class LandmarkVisualizer:
         Each facial region is drawn with a distinct colour.
         A legend is added in the top-left corner.
 
+        If more than 50% of the 68 points are ``(-1, -1)`` (sparse
+        landmark set), the point radius and line thickness are increased
+        to make the visible anchors more prominent.
+
         Parameters
         ----------
         img_bgr : ImageArray
@@ -56,16 +60,29 @@ class LandmarkVisualizer:
         """
         annotated = img_bgr.copy()
 
+        # Determine if this is a sparse landmark set (>50% missing)
+        missing_count = sum(1 for pt in landmarks.landmarks_68 if pt == (-1, -1))
+        is_sparse = missing_count > 34
+
+        radius = LANDMARK_POINT_RADIUS * 2 if is_sparse else LANDMARK_POINT_RADIUS
+        thickness = (
+            LANDMARK_LINE_THICKNESS + 1
+            if is_sparse
+            else LANDMARK_LINE_THICKNESS
+        )
+
         # Draw points and connections for each region
         for region_name, color in REGION_COLORS.items():
             pts = landmarks.landmarks_by_region[region_name]
 
             # Draw points
             for pt in pts:
+                if pt == (-1, -1):
+                    continue
                 cv2.circle(
                     annotated,
                     pt,
-                    LANDMARK_POINT_RADIUS,
+                    radius,
                     color,
                     -1,  # filled
                 )
@@ -74,12 +91,14 @@ class LandmarkVisualizer:
             connections = REGION_CONNECTIONS.get(region_name, [])
             for i, j in connections:
                 if i < len(pts) and j < len(pts):
+                    if pts[i] == (-1, -1) or pts[j] == (-1, -1):
+                        continue
                     cv2.line(
                         annotated,
                         pts[i],
                         pts[j],
                         color,
-                        LANDMARK_LINE_THICKNESS,
+                        thickness,
                     )
 
         # Draw hairline if available

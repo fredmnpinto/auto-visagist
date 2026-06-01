@@ -682,3 +682,42 @@ class TestHairlineDetector:
         assert result["canny_high"] == HAIRLINE_CANNY_HIGH
         assert result["close_ksize"] == HAIRLINE_CLOSE_KSIZE
         assert result["gaussian_ksize"] == HAIRLINE_GAUSSIAN_KSIZE
+
+    def test_detect_missing_eyebrow_points_fallback(
+        self,
+    ) -> None:
+        """Test geometric fallback when all eyebrow points are (-1, -1)."""
+        detector = HairlineDetector()
+
+        from pathlib import Path
+        from visagism.constants import REGION_INDICES
+
+        landmarks_68 = [(0, 0)] * 68
+        landmarks_68[33] = (150, 200)
+
+        # Set all eyebrow points to missing
+        for idx in REGION_INDICES["left_eyebrow"] + REGION_INDICES["right_eyebrow"]:
+            landmarks_68[idx] = (-1, -1)
+
+        landmarks_by_region: LandmarkRegions = {
+            name: [landmarks_68[i] for i in indices]
+            for name, indices in REGION_INDICES.items()
+        }
+
+        landmarks = FacialLandmarks(
+            image_path=Path("/fake/test.jpg"),
+            face_rect=(50, 50, 200, 250),
+            landmarks_68=landmarks_68,
+            landmarks_by_region=landmarks_by_region,
+        )
+
+        img_gray = np.zeros((400, 400), dtype=np.uint8)
+        img_gray[:] = 128
+
+        result = detector.detect(img_gray, landmarks)
+
+        # Should use geometric fallback: avg_eyebrow_y = fy + fh * 0.2 = 50 + 50 = 100
+        expected_avg_eyebrow_y = 50 + int(250 * 0.20)
+        assert result["avg_eyebrow_y"] == expected_avg_eyebrow_y
+        assert result["method"] == "fallback"
+        assert result["hairline_y"] >= landmarks.face_rect[1]
