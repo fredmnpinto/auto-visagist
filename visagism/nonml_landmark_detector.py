@@ -10,7 +10,6 @@ and OpenCV tutorials on facial feature detection.
 
 from __future__ import annotations
 
-import math
 from pathlib import Path
 
 import cv2
@@ -82,25 +81,25 @@ class NonMLLandmarkDetector:
         landmarks_68[16] = (x + w, y + int(h * 0.85))
 
         # Eyes (indices 36, 39, 42, 45)
-        eye_points = self._detect_eyes(img_gray, face_rect)
+        eye_points, _ = self._detect_eyes(img_gray, face_rect)
         landmarks_68[36] = eye_points[0]
         landmarks_68[39] = eye_points[1]
         landmarks_68[42] = eye_points[2]
         landmarks_68[45] = eye_points[3]
 
         # Nose (indices 31, 33, 35)
-        nose_points = self._detect_nose(img_gray, face_rect)
+        nose_points, _ = self._detect_nose(img_gray, face_rect)
         landmarks_68[31] = nose_points[0]
         landmarks_68[33] = nose_points[1]
         landmarks_68[35] = nose_points[2]
 
         # Mouth (indices 48, 54)
-        mouth_points = self._detect_mouth(img_gray, face_rect)
+        mouth_points, _ = self._detect_mouth(img_gray, face_rect)
         landmarks_68[48] = mouth_points[0]
         landmarks_68[54] = mouth_points[1]
 
         # Eyebrows (indices 19, 24)
-        brow_points = self._detect_eyebrows(img_gray, face_rect)
+        brow_points, _ = self._detect_eyebrows(img_gray, face_rect)
         landmarks_68[19] = brow_points[0]
         landmarks_68[24] = brow_points[1]
 
@@ -113,136 +112,207 @@ class NonMLLandmarkDetector:
             landmarks_by_region=landmarks_by_region,
         )
 
-    def _detect_eyes(
+    def detect_with_steps(
         self,
         img_gray: ImageArray,
         face_rect: FaceRect,
-    ) -> tuple[tuple[int, int], tuple[int, int], tuple[int, int], tuple[int, int]]:
-        """Detect eye corners using intensity blob detection.
+        image_path: Path,
+    ) -> tuple[FacialLandmarks, dict]:
+        """Detect 14 anchor landmarks and return intermediate step data.
 
         Parameters
         ----------
         img_gray : ImageArray
-            Full grayscale input image.
+            Grayscale input image.
         face_rect : FaceRect
             Face bounding box ``(x, y, w, h)``.
+        image_path : Path
+            Path to the original image file.
 
         Returns
         -------
-        tuple of 4 (int, int)
-            Left-eye left corner, left-eye right corner,
-            right-eye left corner, right-eye right corner.
+        tuple[FacialLandmarks, dict]
+            Detected landmarks and a dictionary with diagnostic data
+            for each step.
         """
+        landmarks_68: LandmarksList = [(-1, -1)] * 68
         x, y, w, h = face_rect
+        steps: dict = {"face_rect": face_rect}
 
-        # Upper-face ROI: top 45 % of face
-        y_end = y + int(h * 0.45)
-        if y_end <= y or y >= img_gray.shape[0]:
-            return self._eye_fallback(x, y, w, h)
+        # Jawline extremes (indices 0, 8, 16)
+        landmarks_68[0] = (x, y + int(h * 0.85))
+        landmarks_68[8] = (x + w // 2, y + h)
+        landmarks_68[16] = (x + w, y + int(h * 0.85))
 
-        roi = img_gray[y:y_end, x:x + w]
-        if roi.size == 0:
-            return self._eye_fallback(x, y, w, h)
+        # Eyes (indices 36, 39, 42, 45)
+        eye_points, eye_steps = self._detect_eyes(img_gray, face_rect)
+        landmarks_68[36] = eye_points[0]
+        landmarks_68[39] = eye_points[1]
+        landmarks_68[42] = eye_points[2]
+        landmarks_68[45] = eye_points[3]
+        steps["eye"] = eye_steps
 
-        # Threshold for dark regions (eyes are darker than skin)
-        # Use Otsu when there is enough contrast; otherwise fixed.
-        if roi.max() - roi.min() > 20:
-            _, thresh = cv2.threshold(
-                roi, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
-            )
-        else:
-            thresh = cv2.inRange(roi, 0, 80)
+        # Nose (indices 31, 33, 35)
+        nose_points, nose_steps = self._detect_nose(img_gray, face_rect)
+        landmarks_68[31] = nose_points[0]
+        landmarks_68[33] = nose_points[1]
+        landmarks_68[35] = nose_points[2]
+        steps["nose"] = nose_steps
 
-        # Split into left/right halves
-        mid_x = w // 2
-        left_thresh = thresh[:, :mid_x]
-        right_thresh = thresh[:, mid_x:]
+        # Mouth (indices 48, 54)
+        mouth_points, mouth_steps = self._detect_mouth(img_gray, face_rect)
+        landmarks_68[48] = mouth_points[0]
+        landmarks_68[54] = mouth_points[1]
+        steps["mouth"] = mouth_steps
 
-        left_eye = self._find_eye_blob(left_thresh, x, y)
-        right_eye = self._find_eye_blob(right_thresh, x + mid_x, y)
+        # Eyebrows (indices 19, 24)
+        brow_points, brow_steps = self._detect_eyebrows(img_gray, face_rect)
+        landmarks_68[19] = brow_points[0]
+        landmarks_68[24] = brow_points[1]
+        steps["eyebrow"] = brow_steps
 
-        return left_eye[0], left_eye[1], right_eye[0], right_eye[1]
+        landmarks_by_region = LandmarkDetector._group_by_region(landmarks_68)
 
-    def _eye_fallback(
-        self, x: int, y: int, w: int, h: int
-    ) -> tuple[tuple[int, int], tuple[int, int], tuple[int, int], tuple[int, int]]:
-        """Return geometric eye-corner estimates.
-
-        Parameters
-        ----------
-        x, y, w, h : int
-            Face bounding box.
-
-        Returns
-        -------
-        tuple of 4 (int, int)
-            Estimated eye corners.
-        """
-        eye_y = y + int(h * 0.25)
-        left_l = x + int(w * 0.20)
-        left_r = x + int(w * 0.35)
-        right_l = x + int(w * 0.65)
-        right_r = x + int(w * 0.80)
-        return (left_l, eye_y), (left_r, eye_y), (right_l, eye_y), (right_r, eye_y)
-
-    def _find_eye_blob(
-        self,
-        thresh: npt.NDArray[np.uint8],
-        offset_x: int,
-        offset_y: int,
-    ) -> tuple[tuple[int, int], tuple[int, int]]:
-        """Find the largest dark blob and return its left/right edges.
-
-        Parameters
-        ----------
-        thresh : np.ndarray
-            Binary thresholded ROI.
-        offset_x : int
-            X offset of the ROI in the full image.
-        offset_y : int
-            Y offset of the ROI in the full image.
-
-        Returns
-        -------
-        tuple of 2 (int, int)
-            Left and right eye corners.
-        """
-        contours, _ = cv2.findContours(
-            thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        landmarks = FacialLandmarks(
+            image_path=image_path,
+            face_rect=face_rect,
+            landmarks_68=landmarks_68,
+            landmarks_by_region=landmarks_by_region,
         )
 
-        min_area = max(thresh.shape[0] * thresh.shape[1] * 0.001, 10.0)
-        best_contour = None
-        best_area = 0.0
+        steps = {
+            "face_rect": face_rect,
+            "eye": eye_steps,
+            "eye_left_roi": eye_steps.get("left_roi"),
+            "eye_right_roi": eye_steps.get("right_roi"),
+            "eye_left_pupil": eye_steps.get("left_pupil"),
+            "eye_right_pupil": eye_steps.get("right_pupil"),
+            "eye_left_corners": eye_steps.get("left_corners"),
+            "eye_right_corners": eye_steps.get("right_corners"),
+            "nose": nose_steps,
+            "nose_roi": nose_steps.get("roi"),
+            "nose_profile": nose_steps.get("profile"),
+            "mouth": mouth_steps,
+            "mouth_roi": mouth_steps.get("roi"),
+            "mouth_gradient": mouth_steps.get("gradient_profile"),
+            "eyebrow": brow_steps,
+            "eyebrow_roi": brow_steps.get("roi"),
+            "eyebrow_edges": brow_steps.get("sobel_y"),
+        }
 
-        for cnt in contours:
-            area = cv2.contourArea(cnt)
-            if area < min_area or area <= best_area:
-                continue
+        return landmarks, steps
 
-            perimeter = cv2.arcLength(cnt, True)
-            if perimeter > 0:
-                circularity = 4 * math.pi * area / (perimeter ** 2)
-                if circularity > 0.2:  # Allow slightly elongated shapes
-                    best_area = area
-                    best_contour = cnt
+    def _detect_eyes(self, img_gray, face_rect):
+        x, y, w, h = face_rect
 
-        if best_contour is not None:
-            bx, by, bw, bh = cv2.boundingRect(best_contour)
-            cy = offset_y + by + bh // 2
-            return (offset_x + bx, cy), (offset_x + bx + bw, cy)
+        # Tight eye ROIs using face proportions
+        left_roi_x = x + int(w * 0.15)
+        left_roi_y = y + int(h * 0.25)  # 25% down from top (slightly lower)
+        left_roi_w = int(w * 0.30)
+        left_roi_h = int(h * 0.20)      # Keep 20% height (now ends at 45%)
 
-        # Fallback: geometric estimate centred in the ROI
-        cx = offset_x + thresh.shape[1] // 2
-        cy = offset_y + thresh.shape[0] // 2
-        w_est = max(thresh.shape[1] // 4, 5)
-        return (cx - w_est // 2, cy), (cx + w_est // 2, cy)
+        right_roi_x = x + int(w * 0.55)
+        right_roi_y = y + int(h * 0.25)  # 25% down from top (slightly lower)
+        right_roi_w = int(w * 0.30)
+        right_roi_h = int(h * 0.20)      # Keep 20% height (now ends at 45%)
+
+        # Extract ROIs
+        left_roi = img_gray[
+            left_roi_y:left_roi_y + left_roi_h,
+            left_roi_x:left_roi_x + left_roi_w,
+        ]
+        right_roi = img_gray[
+            right_roi_y:right_roi_y + right_roi_h,
+            right_roi_x:right_roi_x + right_roi_w,
+        ]
+
+        # Find pupils (darkest points)
+        left_pupil = self._find_pupil(left_roi, left_roi_x, left_roi_y)
+        right_pupil = self._find_pupil(right_roi, right_roi_x, right_roi_y)
+
+        # Find corners by scanning from pupil
+        left_corners = self._find_eye_corners(
+            left_roi, left_pupil, left_roi_x, left_roi_y
+        )
+        right_corners = self._find_eye_corners(
+            right_roi, right_pupil, right_roi_x, right_roi_y
+        )
+
+        step_data = {
+            "left_roi": left_roi,
+            "right_roi": right_roi,
+            "left_pupil": left_pupil,
+            "right_pupil": right_pupil,
+            "left_corners": left_corners,
+            "right_corners": right_corners,
+        }
+
+        return (
+            left_corners[0], left_corners[1],
+            right_corners[0], right_corners[1],
+        ), step_data
+
+    def _find_pupil(self, roi, offset_x, offset_y):
+        if roi.size == 0:
+            return (offset_x + roi.shape[1] // 2, offset_y + roi.shape[0] // 2)
+
+        min_val = np.min(roi)
+        threshold = min_val + (np.max(roi) - min_val) * 0.1
+        dark_mask = roi <= threshold
+        dark_y, dark_x = np.where(dark_mask)
+
+        if len(dark_y) > 0:
+            pupil_x = int(np.mean(dark_x)) + offset_x
+            pupil_y = int(np.mean(dark_y)) + offset_y
+            return (pupil_x, pupil_y)
+
+        return (offset_x + roi.shape[1] // 2, offset_y + roi.shape[0] // 2)
+
+    def _find_eye_corners(self, roi, pupil, offset_x, offset_y):
+        if roi.size == 0:
+            return (pupil[0], pupil[1]), (pupil[0], pupil[1])
+
+        px = pupil[0] - offset_x
+        py = pupil[1] - offset_y
+
+        # Clamp to ROI bounds
+        px = max(0, min(px, roi.shape[1] - 1))
+        py = max(0, min(py, roi.shape[0] - 1))
+
+        # Get horizontal row through pupil
+        row = roi[py, :].astype(np.float32)
+
+        # Smooth
+        if len(row) > 5:
+            row = cv2.GaussianBlur(row.reshape(-1, 1), (5, 1), 0).flatten()
+
+        # Find left corner: scan left, find brightness jump
+        left_x = px
+        for i in range(px, 0, -1):
+            if row[i] > row[i-1] + 15:
+                left_x = i
+                break
+
+        # Find right corner: scan right, find brightness jump
+        right_x = px
+        for i in range(px, len(row) - 1):
+            if row[i] > row[i+1] + 15:
+                right_x = i
+                break
+
+        return (
+            (offset_x + left_x, pupil[1]),
+            (offset_x + right_x, pupil[1])
+        )
 
     def _detect_nose(
         self,
         img_gray: ImageArray,
         face_rect: FaceRect,
-    ) -> tuple[tuple[int, int], tuple[int, int], tuple[int, int]]:
+    ) -> tuple[
+        tuple[tuple[int, int], tuple[int, int], tuple[int, int]],
+        dict,
+    ]:
         """Detect nose base and sides using brightness profile.
 
         Parameters
@@ -254,8 +324,9 @@ class NonMLLandmarkDetector:
 
         Returns
         -------
-        tuple of 3 (int, int)
-            Left nostril, nose tip/base, right nostril.
+        tuple
+            First element is a tuple of 3 (int, int) nose points.
+            Second element is a dict with diagnostic step data.
         """
         x, y, w, h = face_rect
 
@@ -267,11 +338,12 @@ class NonMLLandmarkDetector:
         roi = img_gray[y_start:y_end, x:x + w]
         if roi.size == 0:
             nose_y = y + int(h * 0.60)
-            return (
+            fallback = (
                 (cx - int(w * 0.08), nose_y),
                 (cx, nose_y),
                 (cx + int(w * 0.08), nose_y),
             )
+            return fallback, {"fallback": True, "reason": "empty_roi"}
 
         # Vertical brightness profile on centreline
         col_idx = cx - x
@@ -308,17 +380,26 @@ class NonMLLandmarkDetector:
         else:
             nose_right_x = cx + int(w * 0.08)
 
+        step_data = {
+            "roi": roi,
+            "profile": profile,
+            "nose_base_y": nose_base_y,
+            "row": row,
+            "left_valley": left_valley if len(left_half) > 0 else None,
+            "right_valley": right_valley if len(right_half) > 0 else None,
+            "col_idx": col_idx,
+        }
         return (
             (nose_left_x, nose_base_y),
             (cx, nose_base_y),
             (nose_right_x, nose_base_y),
-        )
+        ), step_data
 
     def _detect_mouth(
         self,
         img_gray: ImageArray,
         face_rect: FaceRect,
-    ) -> tuple[tuple[int, int], tuple[int, int]]:
+    ) -> tuple[tuple[tuple[int, int], tuple[int, int]], dict]:
         """Detect mouth corners using horizontal gradient.
 
         Parameters
@@ -330,18 +411,21 @@ class NonMLLandmarkDetector:
 
         Returns
         -------
-        tuple of 2 (int, int)
-            Left and right mouth corners.
+        tuple
+            First element is a tuple of 2 (int, int) mouth corners.
+            Second element is a dict with diagnostic step data.
         """
         x, y, w, h = face_rect
 
-        # Lower-third ROI
-        y_start = y + int(h * 0.60)
-        roi = img_gray[y_start:y + h, x:x + w]
+        # Mouth ROI: 65-85% of face height (tighter than lower third)
+        y_start = y + int(h * 0.65)
+        y_end = y + int(h * 0.85)
+        roi = img_gray[y_start:y_end, x:x + w]
 
         if roi.size == 0:
-            mouth_y = y + int(h * 0.80)
-            return (x + int(w * 0.25), mouth_y), (x + int(w * 0.75), mouth_y)
+            mouth_y = y + int(h * 0.75)  # Center of 65-85% range
+            fallback = (x + int(w * 0.25), mouth_y), (x + int(w * 0.75), mouth_y)
+            return fallback, {"fallback": True, "reason": "empty_roi"}
 
         # Horizontal Sobel gradient
         sobel_x = cv2.Sobel(roi, cv2.CV_64F, 1, 0, ksize=3)
@@ -372,13 +456,21 @@ class NonMLLandmarkDetector:
 
         mouth_y = y_start + roi.shape[0] // 2
 
-        return (x + left_idx, mouth_y), (x + right_idx, mouth_y)
+        step_data = {
+            "roi": roi,
+            "sobel_x": sobel_x,
+            "gradient_profile": gradient_profile,
+            "left_idx": left_idx,
+            "right_idx": right_idx,
+            "mid": mid,
+        }
+        return ((x + left_idx, mouth_y), (x + right_idx, mouth_y)), step_data
 
     def _detect_eyebrows(
         self,
         img_gray: ImageArray,
         face_rect: FaceRect,
-    ) -> tuple[tuple[int, int], tuple[int, int]]:
+    ) -> tuple[tuple[tuple[int, int], tuple[int, int]], dict]:
         """Detect eyebrow peaks using horizontal edge detection.
 
         Parameters
@@ -390,8 +482,9 @@ class NonMLLandmarkDetector:
 
         Returns
         -------
-        tuple of 2 (int, int)
-            Left and right eyebrow peaks.
+        tuple
+            First element is a tuple of 2 (int, int) eyebrow peaks.
+            Second element is a dict with diagnostic step data.
         """
         x, y, w, h = face_rect
 
@@ -402,7 +495,8 @@ class NonMLLandmarkDetector:
 
         if roi.size == 0:
             brow_y = y + int(h * 0.20)
-            return (x + int(w * 0.30), brow_y), (x + int(w * 0.70), brow_y)
+            fallback = (x + int(w * 0.30), brow_y), (x + int(w * 0.70), brow_y)
+            return fallback, {"fallback": True, "reason": "empty_roi"}
 
         # Horizontal edges (Sobel Y)
         sobel_y = cv2.Sobel(roi, cv2.CV_64F, 0, 1, ksize=3)
@@ -415,7 +509,13 @@ class NonMLLandmarkDetector:
         left_peak = self._find_brow_peak(left_sobel, x, y_start)
         right_peak = self._find_brow_peak(right_sobel, x + mid_x, y_start)
 
-        return left_peak, right_peak
+        step_data = {
+            "roi": roi,
+            "sobel_y": sobel_y,
+            "left_peak": left_peak,
+            "right_peak": right_peak,
+        }
+        return (left_peak, right_peak), step_data
 
     def _find_brow_peak(
         self,
