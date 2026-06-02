@@ -207,12 +207,12 @@ class NonMLLandmarkDetector:
 
         # Tight eye ROIs using face proportions
         left_roi_x = x + int(w * 0.15)
-        left_roi_y = y + int(h * 0.25)  # 25% down from top (slightly lower)
+        left_roi_y = y + int(h * 0.35)  # 35% down from top
         left_roi_w = int(w * 0.30)
         left_roi_h = int(h * 0.20)      # Keep 20% height (now ends at 45%)
 
         right_roi_x = x + int(w * 0.55)
-        right_roi_y = y + int(h * 0.25)  # 25% down from top (slightly lower)
+        right_roi_y = y + int(h * 0.35)  # 35% down from top
         right_roi_w = int(w * 0.30)
         right_roi_h = int(h * 0.20)      # Keep 20% height (now ends at 45%)
 
