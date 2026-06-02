@@ -72,13 +72,38 @@ def fake_steps() -> dict:
 
 @pytest.fixture
 def fake_steps_empty_roi() -> dict:
-    """Return a steps dict with an empty/invalid ROI."""
+    """Return a steps dict with an empty ROI but valid coordinates."""
     return {
         "hairline_y": 50,
         "method": "fallback",
         "roi_coords": (97, 98, 80, 80),  # y_start == y_end -> empty
         "roi_raw": np.array([]),
-        "canny_context_coords": (50, 150, 80, 80),
+        "canny_context_coords": (50, 150, 30, 80),  # valid coords
+        "canny_context_raw": np.array([]),
+        "closed_context": np.array([]),
+        "close_ksize": 0,
+        "canny_edge_map": np.array([]),
+        "center_column": np.array([]),
+        "first_edge_idx": -1,
+        "edge_pixels_count": 0,
+        "gaussian_ksize": 5,
+        "canny_low": 30,
+        "canny_high": 100,
+        "avg_eyebrow_y": 80,
+        "face_rect": (50, 50, 100, 120),
+        "searchable_rows": 0,
+    }
+
+
+@pytest.fixture
+def fake_steps_invalid_coords() -> dict:
+    """Return a steps dict with invalid coordinates."""
+    return {
+        "hairline_y": 50,
+        "method": "fallback",
+        "roi_coords": (97, 98, 80, 80),
+        "roi_raw": np.array([]),
+        "canny_context_coords": (50, 150, 80, 80),  # invalid: y_start == y_end
         "canny_context_raw": np.array([]),
         "closed_context": np.array([]),
         "close_ksize": 0,
@@ -223,6 +248,191 @@ class TestBuildSummaryText:
         assert "canny detection at y=80" in text
 
 
+class TestCreateStep2PureCanny:
+    """Tests for _create_step2_pure_canny."""
+
+    def test_returns_bgr_image(self) -> None:
+        """Result should be a 3-channel BGR image with same dimensions."""
+        img_gray = np.zeros((100, 150), dtype=np.uint8)
+        img_gray[40:60, 50:100] = 255
+        result = demo._create_step2_pure_canny(img_gray, 50, 150)
+        assert result.shape == (100, 150, 3)
+        assert result.dtype == np.uint8
+
+    def test_no_preprocessing_applied(self) -> None:
+        """Pure Canny should not apply blur or morphology."""
+        img_gray = np.zeros((50, 50), dtype=np.uint8)
+        img_gray[20:30, 20:30] = 255
+        result = demo._create_step2_pure_canny(img_gray, 50, 150)
+        # Just verify it runs and produces output; exact edge pixels depend
+        # on OpenCV's Canny implementation.
+        assert result.shape == (50, 50, 3)
+
+
+class TestBuildStepImages:
+    """Tests for _build_step_images."""
+
+    def test_returns_four_images(self, fake_steps: dict) -> None:
+        """Should return exactly 4 images."""
+        img_bgr = np.zeros((200, 200, 3), dtype=np.uint8)
+        img_gray = np.zeros((200, 200), dtype=np.uint8)
+        images = demo._build_step_images(img_bgr, img_gray, fake_steps, None)
+        assert len(images) == 4
+
+    def test_step1_is_original_image(self, fake_steps: dict) -> None:
+        """Step 1 should be pixel-identical to the input BGR image."""
+        img_bgr = np.random.randint(0, 255, (100, 100, 3), dtype=np.uint8)
+        img_gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+        images = demo._build_step_images(img_bgr, img_gray, fake_steps, None)
+        np.testing.assert_array_equal(images[0], img_bgr)
+
+    def test_step2_is_pure_canny_on_full_image(self, fake_steps: dict) -> None:
+        """Step 2 should have same (H, W) as input and 3 channels."""
+        img_bgr = np.zeros((200, 200, 3), dtype=np.uint8)
+        img_gray = np.zeros((200, 200), dtype=np.uint8)
+        images = demo._build_step_images(img_bgr, img_gray, fake_steps, None)
+        assert images[1].shape == (200, 200, 3)
+
+    def test_all_steps_match_input_dimensions(self, fake_steps: dict) -> None:
+        """All 4 steps should have the same dimensions as the input image."""
+        img_bgr = np.zeros((200, 250, 3), dtype=np.uint8)
+        img_gray = np.zeros((200, 250), dtype=np.uint8)
+        images = demo._build_step_images(img_bgr, img_gray, fake_steps, None)
+        for i, img in enumerate(images):
+            assert img.shape == (200, 250, 3), f"Step {i + 1} has wrong shape"
+
+    def test_step3_has_green_roi_rectangle(self, fake_steps: dict) -> None:
+        """Step 3 should have a green ROI rectangle around the context area."""
+        img_bgr = np.zeros((200, 200, 3), dtype=np.uint8)
+        img_gray = np.zeros((200, 200), dtype=np.uint8)
+        images = demo._build_step_images(img_bgr, img_gray, fake_steps, None)
+        step3 = images[2]
+        roi_area = step3[28:82, 48:152]
+        has_green = np.any(
+            (roi_area[:, :, 1] == 255)
+            & (roi_area[:, :, 0] < 50)
+            & (roi_area[:, :, 2] < 50)
+        )
+        assert has_green, "Expected green ROI rectangle in Step 3"
+
+    def test_step4_has_cyan_edges_and_red_hairline(
+        self, fake_steps: dict,
+    ) -> None:
+        """Step 4 should have cyan edge pixels and a red dashed hairline."""
+        img_bgr = np.zeros((200, 200, 3), dtype=np.uint8)
+        img_gray = np.zeros((200, 200), dtype=np.uint8)
+        images = demo._build_step_images(img_bgr, img_gray, fake_steps, None)
+        step4 = images[3]
+        # Cyan edge pixel mapped from edges[20, 50] to ~y=50, x=100
+        edge_area = step4[48:52, 98:102]
+        has_cyan = np.any(
+            (edge_area[:, :, 0] == 255)
+            & (edge_area[:, :, 1] == 255)
+            & (edge_area[:, :, 2] < 50)
+        )
+        assert has_cyan, "Expected cyan edge pixel in Step 4"
+        # Red dashed hairline at y=80
+        hairline_area = step4[78:83, :]
+        has_red = np.any(
+            (hairline_area[:, :, 2] == 255)
+            & (hairline_area[:, :, 0] < 50)
+            & (hairline_area[:, :, 1] < 50)
+        )
+        assert has_red, "Expected red hairline in Step 4"
+
+    def test_step3_empty_roi_shows_warning(
+        self, fake_steps_empty_roi: dict,
+    ) -> None:
+        """Step 3 with empty ROI should show full image with warning text."""
+        img_bgr = np.zeros((200, 200, 3), dtype=np.uint8)
+        img_gray = np.zeros((200, 200), dtype=np.uint8)
+        images = demo._build_step_images(
+            img_bgr, img_gray, fake_steps_empty_roi, None,
+        )
+        step3 = images[2]
+        assert step3.shape == (200, 200, 3)
+        # Green rectangle should still be drawn for valid coords
+        roi_area = step3[28:82, 48:152]
+        has_green = np.any(
+            (roi_area[:, :, 1] == 255)
+            & (roi_area[:, :, 0] < 50)
+            & (roi_area[:, :, 2] < 50)
+        )
+        assert has_green, "Expected green ROI rectangle even for empty ROI"
+        # Red warning text should be present
+        has_red = np.any(
+            (step3[:, :, 2] == 255)
+            & (step3[:, :, 0] < 50)
+            & (step3[:, :, 1] < 50)
+        )
+        assert has_red, "Expected red warning text for empty ROI"
+
+    def test_step4_empty_roi_shows_warning(
+        self, fake_steps_empty_roi: dict,
+    ) -> None:
+        """Step 4 with empty ROI should show full image with warning text."""
+        img_bgr = np.zeros((200, 200, 3), dtype=np.uint8)
+        img_gray = np.zeros((200, 200), dtype=np.uint8)
+        images = demo._build_step_images(
+            img_bgr, img_gray, fake_steps_empty_roi, None,
+        )
+        step4 = images[3]
+        assert step4.shape == (200, 200, 3)
+        # Green rectangle should still be drawn
+        roi_area = step4[28:82, 48:152]
+        has_green = np.any(
+            (roi_area[:, :, 1] == 255)
+            & (roi_area[:, :, 0] < 50)
+            & (roi_area[:, :, 2] < 50)
+        )
+        assert has_green, "Expected green ROI rectangle even for empty ROI"
+        # Red pixels from warning text or hairline
+        has_red = np.any(
+            (step4[:, :, 2] == 255)
+            & (step4[:, :, 0] < 50)
+            & (step4[:, :, 1] < 50)
+        )
+        assert has_red, "Expected red pixels for warning or hairline"
+
+    def test_step3_invalid_coords_shows_invalid_text(
+        self, fake_steps_invalid_coords: dict,
+    ) -> None:
+        """Step 3 with invalid coords should show 'Invalid ROI' text."""
+        img_bgr = np.zeros((200, 200, 3), dtype=np.uint8)
+        img_gray = np.zeros((200, 200), dtype=np.uint8)
+        images = demo._build_step_images(
+            img_bgr, img_gray, fake_steps_invalid_coords, None,
+        )
+        step3 = images[2]
+        assert step3.shape == (200, 200, 3)
+        center_area = step3[90:110, 20:180]
+        has_red = np.any(
+            (center_area[:, :, 2] == 255)
+            & (center_area[:, :, 0] < 50)
+            & (center_area[:, :, 1] < 50)
+        )
+        assert has_red, "Expected red 'Invalid ROI' text in Step 3"
+
+    def test_step4_invalid_coords_shows_invalid_text(
+        self, fake_steps_invalid_coords: dict,
+    ) -> None:
+        """Step 4 with invalid coords should show 'Invalid ROI' text."""
+        img_bgr = np.zeros((200, 200, 3), dtype=np.uint8)
+        img_gray = np.zeros((200, 200), dtype=np.uint8)
+        images = demo._build_step_images(
+            img_bgr, img_gray, fake_steps_invalid_coords, None,
+        )
+        step4 = images[3]
+        assert step4.shape == (200, 200, 3)
+        center_area = step4[90:110, 20:180]
+        has_red = np.any(
+            (center_area[:, :, 2] == 255)
+            & (center_area[:, :, 0] < 50)
+            & (center_area[:, :, 1] < 50)
+        )
+        assert has_red, "Expected red 'Invalid ROI' text in Step 4"
+
+
 # ---------------------------------------------------------------------------
 # Integration tests for process_image
 # ---------------------------------------------------------------------------
@@ -231,22 +441,19 @@ class TestProcessImageSaves:
     """Tests that process_image always writes files to disk."""
 
     EXPECTED_FILES = [
-        "step01_face_and_roi.png",
-        "step02_forehead_roi.png",
-        "step03_canny_context.png",
-        "step04_closed_context.png",
-        "step05_canny_edge_map.png",
-        "step06_center_column_scan.png",
-        "step07_final_result.png",
+        "step01_original_image.png",
+        "step02_pure_canny.png",
+        "step03_preprocessed.png",
+        "step04_final_canny.png",
         "data.json",
         "profiles.csv",
         "summary.txt",
     ]
 
-    def test_all_ten_files_exist(
+    def test_all_seven_files_exist(
         self, fake_image_path: Path, mock_pipeline: MagicMock, tmp_path: Path,
     ) -> None:
-        """All 10 output files should be created."""
+        """All 7 output files should be created."""
         # Change working directory so output/ is inside tmp_path
         import os
         original_cwd = os.getcwd()
@@ -288,7 +495,7 @@ class TestProcessImageSaves:
                     with patch.object(demo.cv2, "destroyWindow"):
                         with patch.object(demo.cv2, "namedWindow"):
                             demo.process_image(fake_image_path, visualize=True)
-                            assert mock_imshow.call_count == 7
+                            assert mock_imshow.call_count == 4
         finally:
             os.chdir(original_cwd)
 
@@ -326,6 +533,51 @@ class TestProcessImageSaves:
             assert isinstance(data["roi_coords"], list)
             assert "canny_edge_map" in data
             assert "first_edge_idx" in data
+            assert "whole_image_canny" not in data
+        finally:
+            os.chdir(original_cwd)
+
+    def test_step2_image_shape_matches_input(
+        self, fake_image_path: Path, mock_pipeline: MagicMock, tmp_path: Path,
+    ) -> None:
+        """Step 2 image dimensions should match input image and have 3 channels."""
+        import os
+        original_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            demo.process_image(fake_image_path, visualize=False)
+            step2_path = (
+                Path("output") / fake_image_path.stem
+                / "step02_pure_canny.png"
+            )
+            img = cv2.imread(str(step2_path), cv2.IMREAD_UNCHANGED)
+            assert img is not None
+            assert img.shape[:2] == (200, 200)
+            assert img.shape[2] == 3
+        finally:
+            os.chdir(original_cwd)
+
+    def test_all_step_images_match_input_dimensions(
+        self, fake_image_path: Path, mock_pipeline: MagicMock, tmp_path: Path,
+    ) -> None:
+        """All 4 saved step images should match input dimensions."""
+        import os
+        original_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            demo.process_image(fake_image_path, visualize=False)
+            output_dir = Path("output") / fake_image_path.stem
+            png_names = [
+                "step01_original_image.png",
+                "step02_pure_canny.png",
+                "step03_preprocessed.png",
+                "step04_final_canny.png",
+            ]
+            for name in png_names:
+                img = cv2.imread(str(output_dir / name), cv2.IMREAD_UNCHANGED)
+                assert img is not None, f"Could not read {name}"
+                assert img.shape[:2] == (200, 200), f"{name} has wrong dims"
+                assert img.shape[2] == 3, f"{name} should have 3 channels"
         finally:
             os.chdir(original_cwd)
 

@@ -43,85 +43,173 @@ def _show_step(window_name: str, image: np.ndarray) -> None:
     cv2.destroyWindow(window_name)
 
 
-def _draw_bar_chart(
-    values: np.ndarray, title: str, highlight_idx: int | None = None,
+def _create_step2_pure_canny(
+    img_gray: ImageArray,
+    canny_low: int,
+    canny_high: int,
 ) -> np.ndarray:
-    """Draw a bar chart on a 600x300 dark gray canvas."""
-    canvas = np.full((300, 600, 3), 40, dtype=np.uint8)
-    n = len(values)
-    if n == 0:
-        cv2.putText(canvas, title, (50, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-                    (255, 255, 255), 1)
-        return canvas
+    """Create Step 2 image: pure Canny on raw grayscale without preprocessing.
 
-    bar_width = max(1, 530 // n)
-    max_val = float(np.max(values)) if np.max(values) > 0 else 1.0
-    x_offset = 50
+    Parameters
+    ----------
+    img_gray : ImageArray
+        Full grayscale input image.
+    canny_low : int
+        Lower Canny threshold.
+    canny_high : int
+        Upper Canny threshold.
 
-    for i, val in enumerate(values):
-        h = int((val / max_val) * 220)
-        x = x_offset + i * bar_width
-        color = (0, 200, 255)
-        if highlight_idx is not None and i == highlight_idx:
-            color = (0, 0, 255)
-        cv2.rectangle(canvas, (x, 250 - h), (x + bar_width - 1, 250), color, -1)
-
-    cv2.line(canvas, (50, 250), (580, 250), (180, 180, 180), 1)
-    cv2.line(canvas, (50, 20), (50, 250), (180, 180, 180), 1)
-    cv2.putText(canvas, title, (50, 15), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-                (255, 255, 255), 1)
-    return canvas
+    Returns
+    -------
+    np.ndarray
+        BGR image of Canny edges on the full image.
+    """
+    edges = cv2.Canny(img_gray, canny_low, canny_high)
+    return cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
 
 
-def _create_step1_image(
-    img_bgr: ImageArray, landmarks: FacialLandmarks,
-    xs: int, xe: int, ys: int, ye: int,
-    ctx_xs: int, ctx_xe: int,
+def _create_step3_preprocessed(
+    img_bgr: ImageArray,
+    steps: dict,
 ) -> np.ndarray:
-    """Create Step 1 image: original with face box, eyebrow line, ROI, and context."""
+    """Create Step 3: full image with closed_context composited and ROI overlay.
+
+    Parameters
+    ----------
+    img_bgr : ImageArray
+        Original BGR image.
+    steps : dict
+        Result dictionary from ``HairlineDetector.detect()``.
+
+    Returns
+    -------
+    np.ndarray
+        Full-size BGR image with preprocessed context and ROI overlay.
+    """
     img = img_bgr.copy()
-    fx, fy, fw, fh = landmarks.face_rect
-    cv2.rectangle(img, (fx, fy), (fx + fw, fy + fh), (0, 255, 0), 2)
-    brows = (landmarks.landmarks_by_region["left_eyebrow"]
-             + landmarks.landmarks_by_region["right_eyebrow"])
-    avg_y = int(np.mean([pt[1] for pt in brows]))
-    cv2.line(img, (xs, avg_y), (xe, avg_y), (0, 0, 255), 2)
+    ctx_xs, ctx_xe, ctx_ys, ctx_ye = steps["canny_context_coords"]
+    closed = steps["closed_context"]
 
-    # Context rectangle (cyan, semi-transparent)
-    overlay = img.copy()
-    cv2.rectangle(overlay, (ctx_xs, ys), (ctx_xe, ye), (255, 255, 0), -1)
-    cv2.addWeighted(overlay, 0.15, img, 0.85, 0, img)
-    cv2.rectangle(img, (ctx_xs, ys), (ctx_xe, ye), (255, 255, 0), 2)
+    has_content = closed.size > 0 and closed.ndim == 2
 
-    # 1-pixel ROI strip (magenta, thick for visibility)
-    cv2.line(img, (xs, ys), (xs, ye), (255, 0, 255), 3)
+    if has_content:
+        closed_bgr = cv2.cvtColor(closed, cv2.COLOR_GRAY2BGR)
+        h, w = closed_bgr.shape[:2]
+        dst_y1 = max(0, ctx_ys)
+        dst_y2 = min(img.shape[0], ctx_ys + h)
+        dst_x1 = max(0, ctx_xs)
+        dst_x2 = min(img.shape[1], ctx_xs + w)
+        src_y1 = max(0, -ctx_ys)
+        src_y2 = src_y1 + (dst_y2 - dst_y1)
+        src_x1 = max(0, -ctx_xs)
+        src_x2 = src_x1 + (dst_x2 - dst_x1)
+        if dst_y2 > dst_y1 and dst_x2 > dst_x1:
+            img[dst_y1:dst_y2, dst_x1:dst_x2] = (
+                closed_bgr[src_y1:src_y2, src_x1:src_x2]
+            )
+        label = "Forehead Context"
+        label_color = (0, 255, 0)
+    else:
+        label = "Empty ROI — fallback used"
+        label_color = (0, 0, 255)
 
-    cv2.putText(img, "Face box", (fx + fw + 10, fy + 20),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-    cv2.putText(img, "Canny context", (ctx_xe + 10, ys + 30),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
-    cv2.putText(img, "1px ROI", (xs + 10, ys + 50),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 255), 2)
+    if ctx_ys < ctx_ye and ctx_xs < ctx_xe:
+        cv2.rectangle(
+            img, (ctx_xs, ctx_ys), (ctx_xe, ctx_ye), (0, 255, 0), 2,
+        )
+        cv2.putText(
+            img, label, (ctx_xs, ctx_ys - 10),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.6, label_color, 2,
+        )
+    else:
+        h, w = img.shape[:2]
+        cv2.putText(
+            img, "Invalid ROI", (w // 2 - 80, h // 2),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2,
+        )
+
     return img
 
 
-def _create_step6_image(
-    img_bgr: ImageArray, landmarks: FacialLandmarks,
-    hairline_y: int, method: str, edge_count: int,
+def _create_step4_final_canny(
+    img_bgr: ImageArray,
+    landmarks: FacialLandmarks,
+    steps: dict,
 ) -> np.ndarray:
-    """Create Step 6 image: final result with dashed hairline and text."""
+    """Create Step 4: full image with edge map composited, ROI, and hairline.
+
+    Parameters
+    ----------
+    img_bgr : ImageArray
+        Original BGR image.
+    landmarks : FacialLandmarks
+        Detected facial landmarks (unused but kept for API consistency).
+    steps : dict
+        Result dictionary from ``HairlineDetector.detect()``.
+
+    Returns
+    -------
+    np.ndarray
+        Full-size BGR image with edge overlay, ROI, and hairline line.
+    """
     img = img_bgr.copy()
-    h, w = img.shape[:2]
-    fx, fy, fw, fh = landmarks.face_rect
-    cv2.rectangle(img, (fx, fy), (fx + fw, fy + fh), (0, 255, 0), 2)
-    color = (0, 255, 255) if method == "canny" else (0, 165, 255)
-    for x in range(0, w, 40):
-        cv2.line(img, (x, hairline_y), (min(x + 20, w), hairline_y), color, 3)
-    text = f"Hairline: Y={hairline_y} ({method}) | Edges={edge_count}"
-    (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
-    cv2.rectangle(img, (5, h - th - 15), (tw + 15, h - 5), (0, 0, 0), -1)
-    cv2.putText(img, text, (10, h - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.7,
-                (255, 255, 255), 2)
+    ctx_xs, ctx_xe, ctx_ys, ctx_ye = steps["canny_context_coords"]
+    edges = steps["canny_edge_map"]
+    hairline_y = steps["hairline_y"]
+
+    has_content = edges.size > 0 and edges.ndim == 2
+
+    if has_content:
+        h, w = edges.shape[:2]
+        dst_y1 = max(0, ctx_ys)
+        dst_y2 = min(img.shape[0], ctx_ys + h)
+        dst_x1 = max(0, ctx_xs)
+        dst_x2 = min(img.shape[1], ctx_xs + w)
+        src_y1 = max(0, -ctx_ys)
+        src_y2 = src_y1 + (dst_y2 - dst_y1)
+        src_x1 = max(0, -ctx_xs)
+        src_x2 = src_x1 + (dst_x2 - dst_x1)
+        if dst_y2 > dst_y1 and dst_x2 > dst_x1:
+            edge_region = edges[src_y1:src_y2, src_x1:src_x2]
+            mask = edge_region == 255
+            roi_img = img[dst_y1:dst_y2, dst_x1:dst_x2]
+            roi_img[mask] = (255, 255, 0)  # cyan
+            img[dst_y1:dst_y2, dst_x1:dst_x2] = roi_img
+        label = "Forehead Context"
+        label_color = (0, 255, 0)
+    else:
+        label = "Empty ROI — fallback used"
+        label_color = (0, 0, 255)
+
+    if ctx_ys < ctx_ye and ctx_xs < ctx_xe:
+        cv2.rectangle(
+            img, (ctx_xs, ctx_ys), (ctx_xe, ctx_ye), (0, 255, 0), 2,
+        )
+        cv2.putText(
+            img, label, (ctx_xs, ctx_ys - 10),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.6, label_color, 2,
+        )
+    else:
+        h, w = img.shape[:2]
+        cv2.putText(
+            img, "Invalid ROI", (w // 2 - 80, h // 2),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2,
+        )
+
+    if 0 <= hairline_y < img.shape[0]:
+        for x in range(0, img.shape[1], 40):
+            cv2.line(
+                img,
+                (x, hairline_y),
+                (min(x + 20, img.shape[1]), hairline_y),
+                (0, 0, 255),
+                3,
+            )
+        cv2.putText(
+            img, f"Hairline y={hairline_y}", (10, hairline_y - 10),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2,
+        )
+
     return img
 
 
@@ -145,152 +233,64 @@ def _ensure_output_dir(image_path: Path) -> Path:
 
 def _build_step_images(
     img_bgr: ImageArray,
-    landmarks: FacialLandmarks,
+    img_gray: ImageArray,
     steps: dict,
+    landmarks: FacialLandmarks,
 ) -> list[np.ndarray]:
-    """Build all 7 step images for the hairline detection pipeline.
+    """Build all 4 step images for the hairline detection pipeline.
 
     Parameters
     ----------
     img_bgr : ImageArray
         Original BGR image.
-    landmarks : FacialLandmarks
-        Detected facial landmarks.
+    img_gray : ImageArray
+        Original grayscale image.
     steps : dict
         Result dictionary from ``HairlineDetector.detect()``.
+    landmarks : FacialLandmarks
+        Detected facial landmarks.
 
     Returns
     -------
     list[np.ndarray]
-        List of 7 BGR images, one per step.
+        List of 4 BGR images, one per step, all matching ``img_bgr`` dimensions.
     """
-    x_start, x_end, y_start, y_end = steps["roi_coords"]
-    ctx_xs, ctx_xe, ctx_ys, ctx_ye = steps["canny_context_coords"]
-    roi = steps["roi_raw"]
-    context = steps["canny_context_raw"]
-    closed = steps["closed_context"]
-    edges = steps["canny_edge_map"]
-    center_column = steps["center_column"]
-    hairline_y = steps["hairline_y"]
-    method = steps["method"]
-    edge_count = steps["edge_pixels_count"]
-    first_edge_idx = steps["first_edge_idx"]
-
     step_images: list[np.ndarray] = []
 
-    # Step 1: Face and ROI
+    # Step 1: Original Image
+    step_images.append(img_bgr.copy())
+
+    # Step 2: Pure Canny on raw grayscale
     step_images.append(
-        _create_step1_image(
-            img_bgr, landmarks, x_start, x_end, y_start, y_end,
-            ctx_xs, ctx_xe,
+        _create_step2_pure_canny(
+            img_gray, steps["canny_low"], steps["canny_high"]
         )
     )
 
-    # Step 2: Forehead ROI (1-pixel strip, scaled for visibility)
-    if roi.size > 0 and roi.ndim == 2:
-        # Scale the 1-pixel strip horizontally for visibility
-        roi_bgr = cv2.cvtColor(roi, cv2.COLOR_GRAY2BGR)
-        roi_bgr = cv2.resize(
-            roi_bgr, (200, roi_bgr.shape[0]), interpolation=cv2.INTER_NEAREST
-        )
-    elif roi.size > 0:
-        roi_bgr = roi.copy()
-    else:
-        roi_bgr = np.full((100, 200, 3), 40, dtype=np.uint8)
-        cv2.putText(
-            roi_bgr, "Empty ROI", (10, 50),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1,
-        )
-    h_roi, w_roi = roi_bgr.shape[:2]
-    cv2.putText(roi_bgr, f"{w_roi}x{h_roi} px (scaled)", (10, h_roi - 15),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
-    step_images.append(roi_bgr)
+    # Step 3: Preprocessed image with ROI overlay
+    step_images.append(_create_step3_preprocessed(img_bgr, steps))
 
-    # Step 3: Canny context
-    if context.size > 0 and context.ndim == 2:
-        context_bgr = cv2.cvtColor(context, cv2.COLOR_GRAY2BGR)
-    elif context.size > 0:
-        context_bgr = context.copy()
-    else:
-        context_bgr = np.full((100, 100, 3), 40, dtype=np.uint8)
-        cv2.putText(
-            context_bgr, "Empty context", (10, 50),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1,
-        )
-    step_images.append(context_bgr)
-
-    # Step 4: Closed context (after morphological closing)
-    if closed.size > 0 and closed.ndim == 2:
-        closed_bgr = cv2.cvtColor(closed, cv2.COLOR_GRAY2BGR)
-    elif closed.size > 0:
-        closed_bgr = closed.copy()
-    else:
-        closed_bgr = np.full((100, 100, 3), 40, dtype=np.uint8)
-        cv2.putText(
-            closed_bgr, "Empty closed context", (10, 50),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1,
-        )
-    step_images.append(closed_bgr)
-
-    # Step 5: Canny edge map
-    if edges.size > 0 and edges.ndim == 2:
-        edges_bgr = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
-        # Highlight center column in red
-        face_center_x = landmarks.face_rect[0] + landmarks.face_rect[2] // 2
-        center_col_idx = face_center_x - ctx_xs
-        if 0 <= center_col_idx < edges_bgr.shape[1]:
-            edges_bgr[:, center_col_idx] = (0, 0, 255)
-    else:
-        edges_bgr = np.full((100, 100, 3), 40, dtype=np.uint8)
-        cv2.putText(
-            edges_bgr, "Empty edge map", (10, 50),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1,
-        )
-    step_images.append(edges_bgr)
-
-    # Step 6: Center column scan
-    if len(center_column) > 0:
-        step_images.append(
-                _draw_bar_chart(
-                center_column.astype(np.float32),
-                "Center column scan (bottom-to-up, 0=dark, 255=edge)",
-                highlight_idx=first_edge_idx if first_edge_idx >= 0 else None,
-            )
-        )
-    else:
-        empty_chart = np.full((300, 600, 3), 40, dtype=np.uint8)
-        cv2.putText(
-            empty_chart, "No center column data", (50, 150),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 1,
-        )
-        step_images.append(empty_chart)
-
-    # Step 7: Final result
-    step_images.append(
-        _create_step6_image(img_bgr, landmarks, hairline_y, method, edge_count)
-    )
+    # Step 4: Final Canny with ROI and hairline overlay
+    step_images.append(_create_step4_final_canny(img_bgr, landmarks, steps))
 
     return step_images
 
 
 def _save_step_images(output_dir: Path, step_images: list[np.ndarray]) -> None:
-    """Save the 7 step images as PNG files.
+    """Save the 4 step images as PNG files.
 
     Parameters
     ----------
     output_dir : Path
         Directory where images will be saved.
     step_images : list[np.ndarray]
-        List of 7 BGR images.
+        List of 4 BGR images.
     """
     names = [
-        "step01_face_and_roi.png",
-        "step02_forehead_roi.png",
-        "step03_canny_context.png",
-        "step04_closed_context.png",
-        "step05_canny_edge_map.png",
-        "step06_center_column_scan.png",
-        "step07_final_result.png",
+        "step01_original_image.png",
+        "step02_pure_canny.png",
+        "step03_preprocessed.png",
+        "step04_final_canny.png",
     ]
     for name, img in zip(names, step_images):
         path = output_dir / name
@@ -461,7 +461,7 @@ def process_image(image_path: Path, visualize: bool) -> None:
     steps = HairlineDetector().detect(img_gray, landmarks)
 
     # Build step images (always, even in headless mode)
-    step_images = _build_step_images(img_bgr, landmarks, steps)
+    step_images = _build_step_images(img_bgr, img_gray, steps, landmarks)
 
     # Create output directory and save all files
     output_dir = _ensure_output_dir(image_path)
@@ -479,13 +479,10 @@ def process_image(image_path: Path, visualize: bool) -> None:
     # Display windows only if requested
     if visualize:
         titles = [
-            "Step 1: Detect face & define ROI",
-            "Step 2: Extract 1px forehead ROI",
-            "Step 3: Canny context",
-            "Step 4: Closed context (morphological closing)",
-            "Step 5: Canny edge map",
-            "Step 6: Center column scan",
-            "Step 7: Detected hairline",
+            "Step 1: Original Image",
+            "Step 2: Pure Canny (no preprocessing)",
+            "Step 3: Preprocessed (blur + closing)",
+            "Step 4: Final Canny Edge Map",
         ]
         for title, img in zip(titles, step_images):
             _show_step(title, img)
