@@ -79,7 +79,7 @@ class ModelNotFoundError(ModelError):
     MESSAGE: str = (
         "dlib shape predictor model not found. "
         "Download and place the file at:\n"
-        "  data/shape_predictor_68_face_landmarks.dat\n"
+        "  data/models/shape_predictor_68_face_landmarks.dat\n"
         "or set the DLIB_MODEL_PATH environment variable.\n"
         "Download URL:\n"
         "  http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2\n"

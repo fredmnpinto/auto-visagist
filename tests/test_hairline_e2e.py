@@ -28,6 +28,7 @@ from visagism.types import FacialLandmarks
 MODEL_PATH = (
     Path(__file__).parent.parent
     / "data"
+    / "models"
     / "shape_predictor_68_face_landmarks.dat"
 )
 # Also check ~/.dlib/

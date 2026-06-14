@@ -214,6 +214,7 @@ class TestLandmarkGroundTruth:
         path = gt.default_output_path()
         assert path.name == "subject_01_gt.json"
         assert path.parent.name == "ground_truth"
+        assert path.parent.parent.name == "data"
 
     def test_default_output_path_custom_dir(self, tmp_path: Path) -> None:
         """Test default output path with custom directory."""

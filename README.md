@@ -91,11 +91,11 @@ The dlib 68-point facial landmark model is **not included in the repository** (~
 ```bash
 wget http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2
 bzip2 -d shape_predictor_68_face_landmarks.dat.bz2
-mkdir -p data
-mv shape_predictor_68_face_landmarks.dat data/
+mkdir -p data/models
+mv shape_predictor_68_face_landmarks.dat data/models/
 ```
 
-The system will automatically locate the model under `data/` at runtime.
+The system will automatically locate the model under `data/models/` at runtime.
 
 ---
 
@@ -130,7 +130,7 @@ python scripts/landmark_evaluation.py --mode label --input <image_or_dir>
 - Click any landmark to correct its position
 - Press `r` to reset all landmarks to the current prediction
 - Use arrow keys, `n` / `p` for image navigation
-- Labels auto-save to `ground_truth/<stem>_gt.json`
+- Labels auto-save to `data/ground_truth/<stem>_gt.json`
 
 ### Landmark Evaluation — Evaluate Mode
 
@@ -245,11 +245,13 @@ Evaluation on a 9-image ground-truth test set:
 ├── docs/                  # Documentation
 │   └── specs/
 │       └── functional-spec.md
-├── data/                  # dlib model (not in repo)
-├── ground_truth/          # Manual annotations
+├── data/                  # dlib model and generated outputs
+│   ├── models/            # dlib shape predictor (not in repo)
+│   ├── ground_truth/      # Manual annotations
+│   │   └── images/        # Ground-truth source images
+│   └── output/            # Generated visualizations and reports
 ├── images/                # Sample input images
-├── test_images/           # Ground-truth test set
-├── output/                # Generated visualizations and reports
+├── test_images/           # Test set images
 ├── flake.nix              # Nix development environment
 ├── flake.lock             # Nix lock file
 ├── setup.cfg              # pytest / coverage / flake8 configuration

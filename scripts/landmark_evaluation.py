@@ -77,7 +77,7 @@ def _run_label_mode(args: argparse.Namespace) -> None:
         print(f"Error: No valid images found at {input_path}")
         sys.exit(1)
 
-    output_dir = Path(args.output) if args.output else Path("ground_truth")
+    output_dir = Path(args.output) if args.output else Path("data/ground_truth")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"Labeling mode: {len(image_paths)} image(s)")
@@ -249,10 +249,10 @@ def main() -> None:
     parser.add_argument(
         "--output", "-o",
         type=str,
-        default="ground_truth",
+        default="data/ground_truth",
         help=(
             "Output directory for ground truth JSON "
-            "(label mode, default: ground_truth)"
+            "(label mode, default: data/ground_truth)"
         ),
     )
 

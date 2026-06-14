@@ -17,13 +17,13 @@ DEVIATION_THRESHOLD: float = 0.10
 THIRDS_DEVIATION_THRESHOLD: float = 0.10
 
 # Default output directory
-OUTPUT_DIR: str = "output"
+OUTPUT_DIR: str = "data/output"
 
 # Environment variable for dlib model path
 ENV_DLIB_MODEL_PATH: str = "DLIB_MODEL_PATH"
 
 # dlib shape predictor filename
-DEFAULT_MODEL_RELATIVE_PATH: str = "data/shape_predictor_68_face_landmarks.dat"
+DEFAULT_MODEL_RELATIVE_PATH: str = "data/models/shape_predictor_68_face_landmarks.dat"
 
 # Haar cascade parameters
 HAAR_SCALE_FACTOR: float = 1.1
@@ -144,4 +144,4 @@ LABELER_HAIRLINE_THICKNESS: int = 2
 LABELER_INSTRUCTION_FONT_SCALE: float = 0.5
 LABELER_INSTRUCTION_LINE_HEIGHT: int = 20
 LABELER_INSTRUCTION_MARGIN: int = 10
-LABELER_AUTO_SAVE_DIR: str = "ground_truth"
+LABELER_AUTO_SAVE_DIR: str = "data/ground_truth"

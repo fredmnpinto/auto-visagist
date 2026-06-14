@@ -460,7 +460,7 @@ class TestProcessImageSaves:
         os.chdir(tmp_path)
         try:
             demo.process_image(fake_image_path, visualize=False)
-            output_dir = Path("output") / fake_image_path.stem
+            output_dir = Path("data/output") / fake_image_path.stem
             for name in self.EXPECTED_FILES:
                 assert (output_dir / name).exists(), f"Missing {name}"
         finally:
@@ -508,7 +508,7 @@ class TestProcessImageSaves:
         os.chdir(tmp_path)
         try:
             demo.process_image(fake_image_path, visualize=False)
-            summary_path = Path("output") / fake_image_path.stem / "summary.txt"
+            summary_path = Path("data/output") / fake_image_path.stem / "summary.txt"
             content = summary_path.read_text(encoding="utf-8")
             assert "fake_face.jpg" in content
             assert "canny detection at y=80" in content
@@ -525,7 +525,7 @@ class TestProcessImageSaves:
         os.chdir(tmp_path)
         try:
             demo.process_image(fake_image_path, visualize=False)
-            data_path = Path("output") / fake_image_path.stem / "data.json"
+            data_path = Path("data/output") / fake_image_path.stem / "data.json"
             data = json.loads(data_path.read_text(encoding="utf-8"))
             assert data["hairline_y"] == 80
             assert data["method"] == "canny"
@@ -547,7 +547,7 @@ class TestProcessImageSaves:
         try:
             demo.process_image(fake_image_path, visualize=False)
             step2_path = (
-                Path("output") / fake_image_path.stem
+                Path("data/output") / fake_image_path.stem
                 / "step02_pure_canny.png"
             )
             img = cv2.imread(str(step2_path), cv2.IMREAD_UNCHANGED)
@@ -566,7 +566,7 @@ class TestProcessImageSaves:
         os.chdir(tmp_path)
         try:
             demo.process_image(fake_image_path, visualize=False)
-            output_dir = Path("output") / fake_image_path.stem
+            output_dir = Path("data/output") / fake_image_path.stem
             png_names = [
                 "step01_original_image.png",
                 "step02_pure_canny.png",
@@ -591,7 +591,7 @@ class TestProcessImageSaves:
         os.chdir(tmp_path)
         try:
             demo.process_image(fake_image_path, visualize=False)
-            csv_path = Path("output") / fake_image_path.stem / "profiles.csv"
+            csv_path = Path("data/output") / fake_image_path.stem / "profiles.csv"
             with open(csv_path, newline="", encoding="utf-8") as f:
                 reader = csv.reader(f)
                 rows = list(reader)
@@ -614,7 +614,7 @@ class TestProcessImageEmptyRoi:
         os.chdir(tmp_path)
         try:
             demo.process_image(fake_image_path, visualize=False)
-            output_dir = Path("output") / fake_image_path.stem
+            output_dir = Path("data/output") / fake_image_path.stem
             for name in TestProcessImageSaves.EXPECTED_FILES:
                 assert (output_dir / name).exists(), f"Missing {name}"
         finally:
@@ -631,7 +631,7 @@ class TestProcessImageEmptyRoi:
         os.chdir(tmp_path)
         try:
             demo.process_image(fake_image_path, visualize=False)
-            data_path = Path("output") / fake_image_path.stem / "data.json"
+            data_path = Path("data/output") / fake_image_path.stem / "data.json"
             data = json.loads(data_path.read_text(encoding="utf-8"))
             assert data["hairline_y"] == 50
             assert data["method"] == "fallback"
@@ -650,7 +650,7 @@ class TestProcessImageEmptyRoi:
         os.chdir(tmp_path)
         try:
             demo.process_image(fake_image_path, visualize=False)
-            csv_path = Path("output") / fake_image_path.stem / "profiles.csv"
+            csv_path = Path("data/output") / fake_image_path.stem / "profiles.csv"
             with open(csv_path, newline="", encoding="utf-8") as f:
                 rows = list(csv.reader(f))
             assert len(rows) == 1

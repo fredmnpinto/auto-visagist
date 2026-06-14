@@ -286,13 +286,13 @@ A working prototype that:
 **Source**: Development Team (diagnostic support for FR-013)
 **Dependencies**: FR-013
 **Acceptance Criteria**:
-- [x] Save 6 PNG step images to `output/<image_stem>/`: face & ROI overlay, forehead ROI, CLAHE enhanced, intensity graph, gradient graph, final result with dashed hairline
+- [x] Save 6 PNG step images to `data/output/<image_stem>/`: face & ROI overlay, forehead ROI, CLAHE enhanced, intensity graph, gradient graph, final result with dashed hairline
 - [x] Save `data.json` containing raw numerical data: `roi_coords`, `hairline_y`, `gradient`, `row_intensities`, `abs_gradient`, `max_gradient_idx`, `max_gradient_value`, `median_gradient`, `gradient_ratio`, `method`, `avg_eyebrow_y`, `searchable_rows`, `face_rect`
 - [x] Save `profiles.csv` with row-by-row intensity and gradient data (columns: `row_index`, `intensity`, `gradient`, `abs_gradient`)
 - [x] Save `summary.txt` with a human-readable text summary of the analysis (face size, ROI dimensions, searchable rows, max gradient, median gradient, ratio, result method and y-coordinate)
 - [x] Operate in headless mode without requiring `--visualize` flag; display OpenCV windows only when `--visualize` is explicitly passed
 - [x] Graceful error handling for file I/O failures (warnings instead of crashes) and empty ROI (displays "Empty ROI" placeholder image)
-- [x] Create output directory automatically (`output/<image_stem>/`) with `mkdir(parents=True, exist_ok=True)`
+- [x] Create output directory automatically (`data/output/<image_stem>/`) with `mkdir(parents=True, exist_ok=True)`
 **Status**: Implemented
 
 #### FR-016: Landmark Evaluation Tool
@@ -385,7 +385,7 @@ A working prototype that:
 | Visagism Analyzer | Compare proportions to golden ratio | Identify deviations and generate analysis |
 | Visualization Module | Display landmarks and measurements | Overlay points/lines on image, create output visualization |
 | Report Generator | Create analysis reports | Compile results into text/visual report format; supports `--debug` flag to weave diagnostic detail (landmark indices, formulas, intermediate values, all reference blocks with selection scores) into existing FACIAL MEASUREMENTS and PROPORTION ANALYSIS sections using `→` prefixed indented lines |
-| Diagnostic / Demo Scripts | Support debugging and validation of hairline detection | Save intermediate step images, raw numerical data (JSON), per-row CSV profiles, and text summaries to `output/<image_stem>/` for manual inspection and algorithm tuning |
+| Diagnostic / Demo Scripts | Support debugging and validation of hairline detection | Save intermediate step images, raw numerical data (JSON), per-row CSV profiles, and text summaries to `data/output/<image_stem>/` for manual inspection and algorithm tuning |
 | Landmark Ground Truth Module | Store and serialize manually-annotated landmark data | Define `LandmarkGroundTruth` dataclass with 68 landmarks, hairline, corrected indices; JSON save/load; region lookup; validation |
 | Landmark Labeler Module | Interactive GUI for manual landmark annotation | OpenCV window with mouse/keyboard callbacks; pre-fill dlib predictions; save/resume ground truth JSON; hairline labeling mode |
 | Landmark Evaluator Module | Compare predictions against ground truth | Compute per-landmark Euclidean errors, NME, per-region means, hairline error; generate console tables and JSON reports; graceful skip for malformed data |
@@ -463,7 +463,7 @@ A working prototype that:
 - **Visualization**: Matplotlib (optional, for plotting landmarks)
 
 ### 5.4 External Dependencies
-- **dlib 68-point shape predictor model**: File `shape_predictor_68_face_landmarks.dat` (download separately, ~100MB)
+- **dlib 68-point shape predictor model**: File `shape_predictor_68_face_landmarks.dat` (download separately, ~100MB). Place at `data/models/shape_predictor_68_face_landmarks.dat`.
 - **OpenCV Haar Cascade**: Built-in `haarcascade_frontalface_default.xml`
 
 ---
@@ -478,14 +478,8 @@ A working prototype that:
 - **Demo Script Usage**: `python scripts/demo_hairline_steps.py --input <image_path> [--visualize]`
 - **Landmark Evaluation Usage**:
   ```bash
-  # Label a single image or directory
-  python scripts/landmark_evaluation.py --mode label --input photos/face.jpg
-  python scripts/landmark_evaluation.py --mode label --input ./photos/ --output ./ground_truth/
-
-  # Evaluate predictions against ground truth
-  python scripts/landmark_evaluation.py --mode evaluate \
-      --predictions-dir ./predictions/ --ground-truth-dir ./ground_truth/ \
-      --report evaluation_report.json
+  # Run hairline diagnostic (headless, saves to data/output/<image_stem>/)
+  python scripts/demo_hairline_steps.py --input photos/face.jpg
   ```
 - **Example**:
   ```bash
@@ -495,7 +489,7 @@ A working prototype that:
   # Process with debug diagnostics
   python visagism.py --input photos/face.jpg --debug
 
-  # Run hairline diagnostic (headless, saves to output/<image_stem>/)
+  # Run hairline diagnostic (headless, saves to data/output/<image_stem>/)
   python scripts/demo_hairline_steps.py --input photos/face.jpg
   ```
 
@@ -503,14 +497,14 @@ A working prototype that:
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | --input | String (path) | Yes | Path to image file |
-| --output | String (path) | No | Output directory for results (default: ./output) |
+| --output | String (path) | No | Output directory for results (default: ./data/output) |
 | --visualize | Flag | No | Display landmark visualization window |
 | --save-viz | Flag | No | Save visualization to file without displaying |
 | --hairline | Flag | No | Enable hairline detection visualization (dashed line) |
 | --debug | Flag | No | Enable diagnostic detail in report output (landmark indices, formulas, intermediate values, all reference blocks) |
 | --mode | String | Yes (landmark_evaluation.py) | Tool mode: `label` or `evaluate` |
 | --input | String (path) | Yes (label mode) | Path to image file or directory |
-| --output | String (path) | No (label mode) | Output directory for ground truth JSON (default: ./ground_truth) |
+| --output | String (path) | No (label mode) | Output directory for ground truth JSON (default: ./data/ground_truth) |
 | --predictions-dir | String (path) | Yes (evaluate mode) | Directory containing prediction JSON files |
 | --ground-truth-dir | String (path) | Yes (evaluate mode) | Directory containing ground truth JSON files |
 | --report | String (path) | No (evaluate mode) | Path to save JSON evaluation report |
@@ -520,12 +514,12 @@ A working prototype that:
 - **Report File**: `analysis_report_[timestamp].txt` containing full analysis
 - **Visualization File**: `landmarks_[original_filename].jpg` with overlaid landmarks
 - **Diagnostic Outputs** (from `scripts/demo_hairline_steps.py`):
-  - `output/<image_stem>/step01_face_and_roi.png` through `step06_final_result.png`
-  - `output/<image_stem>/data.json` — raw numerical hairline detection data
-  - `output/<image_stem>/profiles.csv` — per-row intensity and gradient profiles
-  - `output/<image_stem>/summary.txt` — human-readable text summary
+  - `data/output/<image_stem>/step01_face_and_roi.png` through `step06_final_result.png`
+  - `data/output/<image_stem>/data.json` — raw numerical hairline detection data
+  - `data/output/<image_stem>/profiles.csv` — per-row intensity and gradient profiles
+  - `data/output/<image_stem>/summary.txt` — human-readable text summary
 - **Ground Truth Files** (from `scripts/landmark_evaluation.py --mode label`):
-  - `ground_truth/<image_stem>_gt.json` — manually annotated 68 landmarks, hairline, and metadata
+  - `data/ground_truth/<image_stem>_gt.json` — manually annotated 68 landmarks, hairline, and metadata
 - **Evaluation Reports** (from `scripts/landmark_evaluation.py --mode evaluate`):
   - Console table with overall mean error, NME, per-region means, per-image breakdown, and skipped files
   - JSON report with `summary`, `per_image`, `per_region_overall`, `skipped_files`

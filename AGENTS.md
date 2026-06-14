@@ -14,7 +14,7 @@ MSc Computer Vision assignment @ Universidade de Aveiro, 2025/2026.
   ```
   wget http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2
   bzip2 -d shape_predictor_68_face_landmarks.dat.bz2
-  # Place at: data/shape_predictor_68_face_landmarks.dat
+  # Place at: data/models/shape_predictor_68_face_landmarks.dat
   ```
 
 ## Commands
@@ -45,7 +45,7 @@ Dual-mode utility for creating ground-truth landmark labels and evaluating detec
 - Click any landmark to correct its position.
 - Press `r` to reset all landmarks to the current prediction.
 - Use arrow keys, `n` / `p` for image navigation.
-- Labels auto-save to `ground_truth/<stem>_gt.json`.
+- Labels auto-save to `data/ground_truth/<stem>_gt.json`.
 
 ### Evaluation Workflow
 
@@ -117,7 +117,7 @@ def detect_facial_landmarks(
 
 **Classes** — nouns describing the component: `FaceDetector`, `LandmarkDetector`, `ProportionCalculator`, `FaceShapeClassifier`, `VisagismAnalyzer`, `ReportGenerator`.
 
-**Constants** — explicit naming: `GOLDEN_RATIO = 1.618`, `SUPPORTED_FORMATS = {'.jpg', '.jpeg', '.png'}`, `MIN_RESOLUTION = (200, 200)`, `DEVIATION_THRESHOLD = 0.10`, `OUTPUT_DIR = "output"`.
+**Constants** — explicit naming: `GOLDEN_RATIO = 1.618`, `SUPPORTED_FORMATS = {'.jpg', '.jpeg', '.png'}`, `MIN_RESOLUTION = (200, 200)`, `DEVIATION_THRESHOLD = 0.10`, `OUTPUT_DIR = "data/output"`.
 
 **CV variable prefixes** — descriptive prefixes indicating what the variable holds:
 - `img_` for image arrays: `img_color`, `img_gray`, `img_annotated`

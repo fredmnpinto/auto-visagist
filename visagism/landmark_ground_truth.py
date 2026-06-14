@@ -285,12 +285,12 @@ class LandmarkGroundTruth:
         """Generate the default output path for this ground truth.
 
         The file is saved as ``<image_stem>_gt.json`` in the
-        ``ground_truth/`` directory (or the specified output_dir).
+        ``data/ground_truth/`` directory (or the specified output_dir).
 
         Parameters
         ----------
         output_dir : Path or None
-            Custom output directory. If None, uses ``ground_truth/``
+            Custom output directory. If None, uses ``data/ground_truth/``
             relative to the image's parent directory.
 
         Returns
@@ -299,5 +299,5 @@ class LandmarkGroundTruth:
             Default file path for saving this ground truth.
         """
         if output_dir is None:
-            output_dir = self.image_path.parent / "ground_truth"
+            output_dir = self.image_path.parent / "data" / "ground_truth"
         return output_dir / f"{self.image_path.stem}_gt.json"

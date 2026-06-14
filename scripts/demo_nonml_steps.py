@@ -335,7 +335,7 @@ def _create_step6_image(
 
 def _ensure_output_dir(image_path: Path) -> Path:
     """Create and return the output directory for a given image."""
-    output_dir = Path("output") / f"{image_path.stem}_nonml"
+    output_dir = Path("data/output") / f"{image_path.stem}_nonml"
     output_dir.mkdir(parents=True, exist_ok=True)
     return output_dir
 

@@ -278,7 +278,7 @@ Launch the interactive labeler:
 python scripts/landmark_evaluation.py \
     --mode label \
     --input ./photos/ \
-    --output ./ground_truth/
+    --output ./data/ground_truth/
 ```
 
 For each image:
@@ -295,8 +295,8 @@ Execute batch evaluation:
 python scripts/landmark_evaluation.py \
     --mode evaluate \
     --predictions-dir ./predictions/ \
-    --ground-truth-dir ./ground_truth/ \
-    --report output/evaluation_report.json
+    --ground-truth-dir ./data/ground_truth/ \
+    --report data/output/evaluation_report.json
 ```
 
 ### 9.5 Step 4: Review Results
@@ -307,7 +307,7 @@ The console will display:
 - Per-image breakdown
 - Any skipped files
 
-The JSON report (`output/evaluation_report.json`) contains the raw data for further analysis or plotting.
+The JSON report (`data/output/evaluation_report.json`) contains the raw data for further analysis or plotting.
 
 ### 9.6 File Structure
 
@@ -327,12 +327,13 @@ project/
 │   ├── woman_6.json
 │   ├── woman_7.json
 │   └── ...
-├── ground_truth/
-│   ├── woman_6_gt.json
-│   ├── woman_7_gt.json
-│   └── ...
-└── output/
-    └── evaluation_report.json
+├── data/
+│   ├── ground_truth/
+│   │   ├── woman_6_gt.json
+│   │   ├── woman_7_gt.json
+│   │   └── ...
+│   └── output/
+│       └── evaluation_report.json
 ```
 
 ---

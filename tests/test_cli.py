@@ -16,7 +16,7 @@ class TestCliParser:
         """Test parsing with only required --input argument."""
         config = CliParser.parse(["--input", "photo.jpg"])
         assert config.input_path == Path("photo.jpg")
-        assert config.output_dir == Path("output")
+        assert config.output_dir == Path("data/output")
         assert config.model_path is None
         assert config.visualize is False
         assert config.save_viz is False
@@ -55,9 +55,9 @@ class TestCliParser:
         assert config.debug is True
 
     def test_parse_output_default(self) -> None:
-        """Test that output defaults to 'output'."""
+        """Test that output defaults to 'data/output'."""
         config = CliParser.parse(["--input", "photo.jpg"])
-        assert config.output_dir == Path("output")
+        assert config.output_dir == Path("data/output")
 
     def test_parse_model_optional(self) -> None:
         """Test that --model is optional and defaults to None."""

@@ -3,7 +3,7 @@
 Searches in a predefined order:
 1. CLI --model argument (if provided)
 2. DLIB_MODEL_PATH environment variable
-3. ./data/shape_predictor_68_face_landmarks.dat (relative to CWD)
+3. ./data/models/shape_predictor_68_face_landmarks.dat (relative to CWD)
 4. ~/.dlib/shape_predictor_68_face_landmarks.dat
 """
 
@@ -29,7 +29,7 @@ class ModelFinder:
         Searches in this order:
         1. *model_override* if provided
         2. ``DLIB_MODEL_PATH`` environment variable
-        3. ``./data/shape_predictor_68_face_landmarks.dat``
+        3. ``./data/models/shape_predictor_68_face_landmarks.dat``
         4. ``~/.dlib/shape_predictor_68_face_landmarks.dat``
 
         Parameters
@@ -58,7 +58,7 @@ class ModelFinder:
         if env_path is not None:
             candidates.append(Path(env_path).resolve())
 
-        # 3. ./data/shape_predictor_68_face_landmarks.dat (relative to CWD)
+        # 3. ./data/models/shape_predictor_68_face_landmarks.dat (relative to CWD)
         candidates.append(Path.cwd() / DEFAULT_MODEL_RELATIVE_PATH)
 
         # 4. ~/.dlib/shape_predictor_68_face_landmarks.dat

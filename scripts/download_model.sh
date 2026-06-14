@@ -5,7 +5,7 @@
 #   bash scripts/download_model.sh
 #
 # The model file is downloaded and placed at:
-#   data/shape_predictor_68_face_landmarks.dat
+#   data/models/shape_predictor_68_face_landmarks.dat
 #
 # This file is required for facial landmark detection.
 # Source: http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2
@@ -15,7 +15,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 DATA_DIR="$PROJECT_DIR/data"
-MODEL_FILE="$DATA_DIR/shape_predictor_68_face_landmarks.dat"
+MODELS_DIR="$DATA_DIR/models"
+MODEL_FILE="$MODELS_DIR/shape_predictor_68_face_landmarks.dat"
 MODEL_BZ2="$MODEL_FILE.bz2"
 MODEL_URL="http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2"
 
@@ -29,8 +30,8 @@ if [ -f "$MODEL_FILE" ]; then
     exit 0
 fi
 
-# Create data directory if needed
-mkdir -p "$DATA_DIR"
+# Create data/models directory if needed
+mkdir -p "$MODELS_DIR"
 
 # Download
 echo "Downloading from: $MODEL_URL"

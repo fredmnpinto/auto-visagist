@@ -224,9 +224,9 @@ def _ensure_output_dir(image_path: Path) -> Path:
     Returns
     -------
     Path
-        Path to ``output/<image_stem>/``.
+        Path to ``data/output/<image_stem>/``.
     """
-    output_dir = Path("output") / image_path.stem
+    output_dir = Path("data/output") / image_path.stem
     output_dir.mkdir(parents=True, exist_ok=True)
     return output_dir
 

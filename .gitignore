@@ -1,7 +1,7 @@
 .direnv/
 .coverage
 
-# Output directory
+# Output directory (legacy transition)
 /output/
 
 # Python cache
@@ -11,7 +11,10 @@ __pycache__/
 .pytest_cache/
 
 # Model files (large binaries, ~100MB)
-data/
+data/models/*.dat
+
+# Generated output files
+data/output/
 
 # Editor
 .vscode/

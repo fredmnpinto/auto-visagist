@@ -32,7 +32,7 @@ class CliConfig:
     """
 
     input_path: Path
-    output_dir: Path = field(default_factory=lambda: Path("output"))
+    output_dir: Path = field(default_factory=lambda: Path("data/output"))
     model_path: Path | None = None
     visualize: bool = False
     save_viz: bool = False
@@ -86,9 +86,9 @@ class CliParser:
         )
         parser.add_argument(
             "--output", "-o",
-            default="output",
+            default="data/output",
             type=str,
-            help="Output directory for results (default: output)",
+            help="Output directory for results (default: data/output)",
         )
         parser.add_argument(
             "--model", "-m",
